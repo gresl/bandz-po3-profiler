@@ -136,6 +136,7 @@ bool   poCisdKzCloseOn = input.bool(false, "London close", inline = "poKzC", gro
 string poCisdKzClose = input.session("1000-1200", "", inline = "poKzC", group = PO_G8)
 // v1.3 FVG research is independent of Bandz's short-lived, Po3-qualified Entry FVG.
 bool   poCisdFvgZones   = input.bool(false, "Research: FVG lifecycle zones", tooltip = "Opt-in chart-timeframe 3-candle FVG history with tests, midpoint interaction, and closing-price invalidation. Does not change Entry FVGs.", group = PO_G8)
+bool   poCisdFvgStatus  = input.bool(false, "Research: FVG lifecycle labels", tooltip = "Only with research FVG zones enabled. Show confirmation time, first test, first midpoint wick/close crossing, and first full close-through.", group = PO_G8)
 int    poCisdFvgDraw    = input.int(6, "Research: draw FVGs", minval = 1, maxval = 12, group = PO_G8)
 int    poCisdFvgHistory = input.int(80, "Research: retain FVGs", minval = 10, maxval = 120, group = PO_G8)
 int    poCisdFvgExtend  = input.int(24, "Research: FVG zone bars", minval = 3, maxval = 200, group = PO_G8)
@@ -2448,8 +2449,8 @@ poRenderProfile() =>
                         if poCisdFvgInLabels
                             string c2Description = na(ev.c2StartTime) ? "C2: unlinked" : na(ev.c2ClosedAt) ? "C2: live/unconfirmed" : "C2 close " + str.format_time(ev.c2ClosedAt, "MM-dd HH:mm", poTz) + (ev.confirmTime < ev.c2ClosedAt ? " (after CISD)" : " (before CISD)")
                             detail += "\n" + c2Description
-                            detail += "\nAligned FVG: " + (na(ev.alignedFvgBar) ? "none" : str.tostring(ev.alignedFvgBar - ev.confirmBar, "+#;-#;0") + " bars")
-                            detail += " | Opp FVG: " + (na(ev.opposingFvgBar) ? "none" : str.tostring(ev.opposingFvgBar - ev.confirmBar, "+#;-#;0") + " bars")
+                            detail += "\nAligned FVG: " + (na(ev.alignedFvgBar) ? "none" : (ev.alignedFvgBar >= ev.confirmBar ? "+" : "") + str.tostring(ev.alignedFvgBar - ev.confirmBar) + " bars")
+                            detail += " | Opp FVG: " + (na(ev.opposingFvgBar) ? "none" : (ev.opposingFvgBar >= ev.confirmBar ? "+" : "") + str.tostring(ev.opposingFvgBar - ev.confirmBar) + " bars")
                         poLabelI(ev.startBar, ev.level, "O", label.style_none, tint, size.tiny)
                         poLabelI(ev.confirmBar + 3, ev.level, detail, label.style_label_left, tint, size.tiny)
                     else
@@ -2479,6 +2480,13 @@ poRenderProfile() =>
                 color fill = color.new(base, expired ? 96 : 88)
                 poBoxI(leftBar, rf.top, math.max(leftBar + 1, rightBar), rf.bot, fill, edge, 1)
                 poLineI(leftBar, rf.mid, math.max(leftBar + 1, rightBar), rf.mid, color.new(base, expired ? 90 : 65), line.style_dotted, 1)
+                if poCisdFvgStatus
+                    string diag = (rf.bull ? "Bull" : "Bear") + " FVG " + str.format_time(rf.bornTime, "MM-dd HH:mm", poTz)
+                    diag += "\nTest: " + (na(rf.testedAt) ? "not yet" : str.format_time(rf.testedAt, "MM-dd HH:mm", poTz))
+                    diag += "\nMid wick: " + (na(rf.midpointWickAt) ? "no" : str.format_time(rf.midpointWickAt, "MM-dd HH:mm", poTz))
+                    diag += " | Mid close: " + (na(rf.midpointCloseAt) ? "no" : str.format_time(rf.midpointCloseAt, "MM-dd HH:mm", poTz))
+                    diag += "\nFar-side close: " + (na(rf.invalidatedAt) ? "no" : str.format_time(rf.invalidatedAt, "MM-dd HH:mm", poTz))
+                    poLabelI(math.max(leftBar + 1, rightBar), rf.mid, diag, label.style_label_left, edge, size.tiny)
                 drawnFvgs += 1
 
     0
