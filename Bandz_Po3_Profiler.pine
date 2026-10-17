@@ -1453,6 +1453,9 @@ if poCalc and (poCisdNewBull or poCisdNewBear) and poRecs.size() > 0
 // Recording on a confirmed chart bar avoids preserving intrabar-only signals.
 // Invalidation is tracked even when the legacy "Remove once" setting is disabled.
 if poCalc and barstate.isconfirmed
+    // An event is actionable at candle close, not at the candle's opening time.
+    // Non-time-based charts can return na for time_close; retain a safe fallback.
+    int closedAt = na(time_close) ? time : time_close
     if poCisdEvents.size() > 0
         for i = 0 to poCisdEvents.size() - 1
             PoCisdEvent ev = poCisdEvents.get(i)
@@ -1460,7 +1463,7 @@ if poCalc and barstate.isconfirmed
                 bool crossed = ev.bull ? close < ev.level : close > ev.level
                 if crossed
                     ev.invalidatedBar := bar_index
-                    ev.invalidatedTime := time
+                    ev.invalidatedTime := closedAt
     if (poCisdNewBull or poCisdNewBear) and poCisds.size() > 0
         PoCisd ncEvent = poCisds.last()
         bool alreadyRecorded = poCisdEvents.size() > 0 and poCisdEvents.last().confirmBar == bar_index
@@ -1480,7 +1483,7 @@ if poCalc and barstate.isconfirmed
             added.startBar := ncEvent.startBar
             added.level := ncEvent.level
             added.confirmBar := ncEvent.confirmBar
-            added.confirmTime := time
+            added.confirmTime := closedAt
             added.c2Linked := linked
             added.c2StartTime := c2OriginTime
             poCisdEvents.push(added)
