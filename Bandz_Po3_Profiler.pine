@@ -121,7 +121,10 @@ int    poCisdMax       = input.int(15, "Max", minval = 1, maxval = 40, inline = 
 int    poCisdHistoryKeep = input.int(100, "Research: retain events", minval = 10, maxval = 250, group = PO_G8)
 int    poCisdDrawKeep    = input.int(20, "Research: draw events", minval = 1, maxval = 40, group = PO_G8)
 bool   poCisdShowInvalid = input.bool(true, "Research: faded invalidated CISDs", group = PO_G8)
-bool   poCisdDiagnostics = input.bool(false, "Research: show origin + confirmation labels", tooltip = "Only for All + C2 highlighted. Shows the origin bar, confirmation timestamp, level, sequence link and first subsequent invalidation.", group = PO_G8)
+bool   poCisdDiagnostics = input.bool(false, "Research: diagnostic labels", tooltip = "Only for All + C2 highlighted. Compact shows one short confirmation label; Full also marks the origin bar. The settings below control which events receive labels.", group = PO_G8)
+string poCisdLabelMode  = input.string("Compact", "Research: label verbosity", options = ["Off", "Compact", "Full"], tooltip = "Off hides research labels without changing CISD lines. Compact: one short confirmation/status label. Full: original multi-line details plus an O at the origin candle.", group = PO_G8)
+string poCisdLabelScope = input.string("C2-linked only", "Research: label events", options = ["All", "C2-linked only", "Invalidated only"], tooltip = "Choose which drawn CISD events receive labels. CISD lines and recorded events are unaffected.", group = PO_G8)
+int    poCisdLabelKeep = input.int(6, "Research: max labels", minval = 1, maxval = 20, tooltip = "Label at most this many most-recent qualifying drawn CISDs. Full labels use two objects (origin and details) each.", group = PO_G8)
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -2287,6 +2290,7 @@ poRenderProfile() =>
     // Draw limits are intentionally separate from history limits and legacy poCisdMax.
     if po3ShowCisd and poCisdScope == "All + C2 highlighted" and poCisdEvents.size() > 0
         int shown = 0
+        int labeled = 0
         for ci = poCisdEvents.size() - 1 to 0
             PoCisdEvent ev = poCisdEvents.get(ci)
             bool invalid = not na(ev.invalidatedBar)
@@ -2295,15 +2299,27 @@ poRenderProfile() =>
                 color base = ev.bull ? poCisdBull : poCisdBear
                 color tint = invalid ? color.new(base, 78) : ev.c2Linked ? base : color.new(base, 30)
                 poLineI(ev.startBar, ev.level, ev.confirmBar + 3, ev.level, tint, line.style_solid, ev.c2Linked ? 3 : 1)
-                if poCisdDiagnostics
+                // Apply label limits independently: suppressing labels never suppresses CISD lines.
+                bool labelEligible = poCisdLabelScope == "All" or
+                     (poCisdLabelScope == "C2-linked only" and ev.c2Linked) or
+                     (poCisdLabelScope == "Invalidated only" and invalid)
+                if poCisdDiagnostics and poCisdLabelMode != "Off" and labeled < poCisdLabelKeep and labelEligible
                     string cls = ev.c2Linked ? "C2" : "Raw"
                     string status = invalid ? "Invalid " + str.format_time(ev.invalidatedTime, "MM-dd HH:mm", poTz) : "Active"
-                    string detail = cls + " " + (ev.bull ? "Bull" : "Bear") + " CISD" +
-                         "\nOrigin #" + str.tostring(ev.startBar) +
-                         " | Confirm " + str.format_time(ev.confirmTime, "MM-dd HH:mm", poTz) +
-                         "\n" + str.tostring(ev.level, format.mintick) + " | " + status
-                    poLabelI(ev.startBar, ev.level, "O", label.style_none, tint, size.tiny)
-                    poLabelI(ev.confirmBar + 3, ev.level, detail, label.style_label_left, tint, size.tiny)
+                    if poCisdLabelMode == "Full"
+                        string detail = cls + " " + (ev.bull ? "Bull" : "Bear") + " CISD" +
+                             "\nOrigin #" + str.tostring(ev.startBar) +
+                             " | Confirm " + str.format_time(ev.confirmTime, "MM-dd HH:mm", poTz) +
+                             "\n" + str.tostring(ev.level, format.mintick) + " | " + status
+                        poLabelI(ev.startBar, ev.level, "O", label.style_none, tint, size.tiny)
+                        poLabelI(ev.confirmBar + 3, ev.level, detail, label.style_label_left, tint, size.tiny)
+                    else
+                        string shortStatus = invalid ? "Inv " + str.format_time(ev.invalidatedTime, "MM-dd HH:mm", poTz) : "Active"
+                        string compact = cls + (ev.bull ? " ↑ " : " ↓ ") +
+                             str.format_time(ev.confirmTime, "MM-dd HH:mm", poTz) +
+                             "\n" + str.tostring(ev.level, format.mintick) + " · " + shortStatus
+                        poLabelI(ev.confirmBar + 3, ev.level, compact, label.style_label_left, tint, size.tiny)
+                    labeled += 1
                 shown += 1
 
     0
