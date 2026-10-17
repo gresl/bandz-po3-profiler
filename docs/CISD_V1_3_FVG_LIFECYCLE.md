@@ -31,7 +31,7 @@ The close-through tests are explicitly *adverse* to the original FVG direction. 
 
 ## CISD–FVG association
 
-The first confirmed **aligned** and **opposing** FVG is recorded independently for each CISD when its FVG confirmation candle falls within the configurable window of **2 bars before through 4 bars after** the CISD's confirmation bar. These windows are hypotheses for replay comparison, not known Cephxs rules.
+The **most recently confirmed eligible pre-existing FVG**, or the **first subsequently confirmed eligible FVG**, is recorded independently for each CISD direction (aligned/opposing) when its FVG confirmation candle falls within the configurable window of **2 bars before through 4 bars after** the CISD's confirmation bar. These windows are hypotheses for replay comparison, not known Cephxs rules.
 
 - Earlier FVGs are eligible only when not already invalidated at the CISD close.
 - Same-candle or later FVGs enter the record only after their **own** third confirmation candle closes; the FVG is never treated as known earlier.
@@ -40,7 +40,7 @@ The first confirmed **aligned** and **opposing** FVG is recorded independently f
 
 ## Live C2 association versus subsequently qualified C2
 
-v1.1's `c2Linked` remains a snapshot of the **first chart CISD linked to a live C2 candidate**, not a confirmed closed C2. v1.3 records `c2ClosedAt` only when the source sequence later satisfies Bandz's own closed C2 condition (sweep + close back within C1), evidenced by `rc.maxPhase >= 3` with a C3 open timestamp. It records **the C3 open = the preceding C2 close** in the source profile timeframe.
+v1.1's `c2Linked` remains a snapshot of the **first chart CISD linked to a live C2 candidate**, not a confirmed closed C2. v1.3 records `c2ClosedAt` only when the source sequence later satisfies Bandz's own closed C2 condition (sweep + close back within C1), evidenced by `rc.maxPhase >= 3` with a C3 open timestamp. It records **the C3 open = the preceding C2 close** in the source profile timeframe, **only if the original chart CISD is still the first chart CISD attached to that C2 record at closure**. If C2 makes a new extreme and Bandz clears that CISD linkage, the older event stays in history but is **not** marked C2-closed/qualified.
 
 The C2-closed timestamp is a retrospective fact only when it becomes known after C2 closes. It does **not** prove that a previously linked CISD was still attached/active when that closure occurred: Bandz can void a CISD if C2 later makes a new extreme.
 
