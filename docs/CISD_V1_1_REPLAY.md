@@ -20,7 +20,7 @@ The new mode distinguishes:
 
 These event classifications are **descriptive, not trading recommendations**. "Raw" can be legitimate; "C2-linked" does not imply the signal is profitable or the underlying C2 correct.
 
-The event registry stores: side, origin chart-bar index, confirmation chart-bar index and timestamp, price level, C2 linkage and C2 source start time (if linked), plus the first later chart-bar close that crossed back through the level.
+The event registry stores: side, origin chart-bar index, confirmation chart-bar index and **candle-close timestamp**, price level, C2 linkage and C2 source start time (if linked), plus the first later chart-bar close that crossed back through the level. When `time_close` is unavailable (e.g. certain non-time-based charts), timestamps fall back to bar-opening time.
 
 ## Inputs / limits
 
