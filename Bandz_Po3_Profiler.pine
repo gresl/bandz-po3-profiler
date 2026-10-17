@@ -1601,7 +1601,11 @@ if poResearchFvgEnabled and barstate.isconfirmed
                 for ri = 0 to poRecs.size() - 1
                     PoRec rc = poRecs.get(ri)
                     if rc.side == (ev.bull ? 1 : -1) and rc.c2StartTime == ev.c2StartTime and rc.maxPhase >= 3 and not na(rc.c3StartTime)
-                        ev.c2ClosedAt := rc.c3StartTime
+                        // A C2 that sweeps a NEW extreme can void the old CISD.
+                        // Confirm only when this original event is still the
+                        // first chart CISD on the qualified C2 record.
+                        if not na(rc.mcBar) and rc.mcBar.get(0) == ev.confirmBar
+                            ev.c2ClosedAt := rc.c3StartTime
 
     // Associate first CONFIRMED aligned/opposing FVG near each CISD.
     // Earlier FVGs are already knowable at the CISD close; later FVGs are
