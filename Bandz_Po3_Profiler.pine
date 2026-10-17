@@ -634,9 +634,9 @@ type PoCisd
     float level
     int   confirmBar
 
-// Immutable confirmation fields plus the first subsequent close-based invalidation.
-// A linked flag is a snapshot: a C2-qualified event remains traceable after the
-// parent sequence is pruned or later invalidated.
+// Immutable confirmation fields plus first subsequent close-based reclamation.
+// A live-C2 association is not proof C2 has closed and qualified; the separate
+// c2ClosedAt timestamp records that later transition, if observed.
 type PoCisdEvent
     bool  bull
     int   startBar
@@ -1614,6 +1614,9 @@ if poResearchFvgEnabled and barstate.isconfirmed
                     for fi = poResearchFvgs.size() - 1 to 0
                         PoResearchFvg rf = poResearchFvgs.get(fi)
                         bool near = rf.bornBar >= ev.confirmBar - poCisdFvgBefore and rf.bornBar <= ev.confirmBar + poCisdFvgAfter and rf.bornBar <= bar_index
+                        // Earlier gaps must still exist at the CISD close; a gap
+                        // already invalidated before confirmation is not context.
+                        near := near and (rf.bornBar >= ev.confirmBar or na(rf.invalidatedBar) or rf.invalidatedBar > ev.confirmBar)
                         if near
                             if rf.bull == ev.bull and na(ev.alignedFvgBar)
                                 ev.alignedFvgBar := rf.bornBar
@@ -2442,6 +2445,11 @@ poRenderProfile() =>
                              "\nOrigin #" + str.tostring(ev.startBar) +
                              " | Confirm " + str.format_time(ev.confirmTime, "MM-dd HH:mm", poTz) +
                              "\n" + str.tostring(ev.level, format.mintick) + " | " + status
+                        if poCisdFvgInLabels
+                            string c2Description = na(ev.c2StartTime) ? "C2: unlinked" : na(ev.c2ClosedAt) ? "C2: live/unconfirmed" : "C2 close " + str.format_time(ev.c2ClosedAt, "MM-dd HH:mm", poTz) + (ev.confirmTime < ev.c2ClosedAt ? " (after CISD)" : " (before CISD)")
+                            detail += "\n" + c2Description
+                            detail += "\nAligned FVG: " + (na(ev.alignedFvgBar) ? "none" : str.tostring(ev.alignedFvgBar - ev.confirmBar, "+#;-#;0") + " bars")
+                            detail += " | Opp FVG: " + (na(ev.opposingFvgBar) ? "none" : str.tostring(ev.opposingFvgBar - ev.confirmBar, "+#;-#;0") + " bars")
                         poLabelI(ev.startBar, ev.level, "O", label.style_none, tint, size.tiny)
                         poLabelI(ev.confirmBar + 3, ev.level, detail, label.style_label_left, tint, size.tiny)
                     else
@@ -2452,6 +2460,26 @@ poRenderProfile() =>
                         poLabelI(ev.confirmBar + 3, ev.level, compact, label.style_label_left, tint, size.tiny)
                     labeled += 1
                 shown += 1
+
+    // Independent, opt-in FVG history. A gap is drawn only after its third
+    // chart candle closed. Box midpoint is a reference, not a trade signal.
+    if po3ShowCisd and poCisdScope == "All + C2 highlighted" and poCisdFvgZones and poResearchFvgs.size() > 0
+        int drawnFvgs = 0
+        for fi = poResearchFvgs.size() - 1 to 0
+            PoResearchFvg rf = poResearchFvgs.get(fi)
+            bool drawable = rf.bornBar >= 2 and bar_index - rf.bornBar <= 4800
+            if drawnFvgs < poCisdFvgDraw and drawable
+                bool expired = not na(rf.invalidatedBar)
+                int rightBar = math.min(bar_index, rf.bornBar + poCisdFvgExtend)
+                if expired
+                    rightBar := math.min(rightBar, rf.invalidatedBar)
+                int leftBar = rf.bornBar - 2
+                color base = rf.bull ? poCisdBull : poCisdBear
+                color edge = color.new(base, expired ? 87 : 55)
+                color fill = color.new(base, expired ? 96 : 88)
+                poBoxI(leftBar, rf.top, math.max(leftBar + 1, rightBar), rf.bot, fill, edge, 1)
+                poLineI(leftBar, rf.mid, math.max(leftBar + 1, rightBar), rf.mid, color.new(base, expired ? 90 : 65), line.style_dotted, 1)
+                drawnFvgs += 1
 
     0
 
