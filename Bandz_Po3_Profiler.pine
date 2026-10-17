@@ -125,6 +125,15 @@ bool   poCisdDiagnostics = input.bool(false, "Research: diagnostic labels", tool
 string poCisdLabelMode  = input.string("Compact", "Research: label verbosity", options = ["Off", "Compact", "Full"], tooltip = "Off hides research labels without changing CISD lines. Compact: one short confirmation/status label. Full: original multi-line details plus an O at the origin candle.", group = PO_G8)
 string poCisdLabelScope = input.string("C2-linked only", "Research: label events", options = ["All", "C2-linked only", "Invalidated only"], tooltip = "Choose which drawn CISD events receive labels. CISD lines and recorded events are unaffected.", group = PO_G8)
 int    poCisdLabelKeep = input.int(6, "Research: max labels", minval = 1, maxval = 20, tooltip = "Label at most this many most-recent qualifying drawn CISDs. Full labels use two objects (origin and details) each.", group = PO_G8)
+// CISD v1.2: optional DISPLAY filters on the confirmed research-event registry.
+// These never change raw detection, event history, sequence qualification, or STDV.
+string poCisdViewFilter = input.string("All", "Research: draw filter", options = ["All", "C2-associated", "Killzones", "C2-associated + Killzones"], tooltip = "All retains v1.1 behavior. C2-associated is a snapshot of the existing LIVE C2 link, not proof of a CLOSED/confirmed C2. Killzones use the confirming chart candle OPEN in the configured Bandz timezone.", group = PO_G8)
+bool   poCisdKzLondonOn = input.bool(true, "London", inline = "poKzL", group = PO_G8)
+string poCisdKzLondon = input.session("0200-0500", "", inline = "poKzL", group = PO_G8)
+bool   poCisdKzNyOn = input.bool(true, "NY AM", inline = "poKzN", group = PO_G8)
+string poCisdKzNy = input.session("0700-1000", "", inline = "poKzN", group = PO_G8)
+bool   poCisdKzCloseOn = input.bool(false, "London close", inline = "poKzC", group = PO_G8)
+string poCisdKzClose = input.session("1000-1200", "", inline = "poKzC", group = PO_G8)
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -628,6 +637,7 @@ type PoCisdEvent
     int   confirmTime
     bool  c2Linked
     int   c2StartTime
+    bool  inKillzone
     int   invalidatedBar
     int   invalidatedTime
 
@@ -1451,6 +1461,19 @@ if poCalc and (poCisdNewBull or poCisdNewBear) and poRecs.size() > 0
         if rc.alive and rc.side == ncSide and not na(rc.c2ExtBar) and bar_index > rc.c2ExtBar
             poLinkCisd(rc, 0, bar_index, nc.startBar, nc.level, time)
 
+// v1.2 timing context: evaluate sessions consistently on every chart bar.
+// The tag is snapshotted at confirmation; the session inputs are expressed in
+// Bandz's selected timezone (default America/New_York, DST-aware).
+// Only intraday charts <= 1h are session-classified for this research view.
+bool poCisdKzEligible = timeframe.isintraday and timeframe.in_seconds() <= 3600
+bool poCisdInKzLondon = not na(time(timeframe.period, poCisdKzLondon, poTz))
+bool poCisdInKzNy = not na(time(timeframe.period, poCisdKzNy, poTz))
+bool poCisdInKzClose = not na(time(timeframe.period, poCisdKzClose, poTz))
+bool poCisdInKillzone = poCisdKzEligible and
+     ((poCisdKzLondonOn and poCisdInKzLondon) or
+      (poCisdKzNyOn and poCisdInKzNy) or
+      (poCisdKzCloseOn and poCisdInKzClose))
+
 // ── CISD v1.1: confirmed, bounded history for research rendering ─────────────
 // This intentionally does not change poCisds, poCisdInvalidate or poLinkCisd.
 // Recording on a confirmed chart bar avoids preserving intrabar-only signals.
@@ -1489,6 +1512,7 @@ if poCalc and barstate.isconfirmed
             added.confirmTime := closedAt
             added.c2Linked := linked
             added.c2StartTime := c2OriginTime
+            added.inKillzone := poCisdInKillzone
             poCisdEvents.push(added)
             while poCisdEvents.size() > poCisdHistoryKeep
                 poCisdEvents.shift()
@@ -2295,7 +2319,11 @@ poRenderProfile() =>
             PoCisdEvent ev = poCisdEvents.get(ci)
             bool invalid = not na(ev.invalidatedBar)
             bool recent = ev.startBar <= bar_index and bar_index - ev.startBar <= 4800
-            if shown < poCisdDrawKeep and recent and (not invalid or poCisdShowInvalid)
+            bool contextPass = poCisdViewFilter == "All" or
+                 (poCisdViewFilter == "C2-associated" and ev.c2Linked) or
+                 (poCisdViewFilter == "Killzones" and ev.inKillzone) or
+                 (poCisdViewFilter == "C2-associated + Killzones" and ev.c2Linked and ev.inKillzone)
+            if shown < poCisdDrawKeep and recent and contextPass and (not invalid or poCisdShowInvalid)
                 color base = ev.bull ? poCisdBull : poCisdBear
                 color tint = invalid ? color.new(base, 78) : ev.c2Linked ? base : color.new(base, 30)
                 poLineI(ev.startBar, ev.level, ev.confirmBar + 3, ev.level, tint, line.style_solid, ev.c2Linked ? 3 : 1)
