@@ -134,6 +134,15 @@ bool   poCisdKzNyOn = input.bool(true, "NY AM", inline = "poKzN", group = PO_G8)
 string poCisdKzNy = input.session("0700-1000", "", inline = "poKzN", group = PO_G8)
 bool   poCisdKzCloseOn = input.bool(false, "London close", inline = "poKzC", group = PO_G8)
 string poCisdKzClose = input.session("1000-1200", "", inline = "poKzC", group = PO_G8)
+// v1.3 FVG research is independent of Bandz's short-lived, Po3-qualified Entry FVG.
+bool   poCisdFvgZones   = input.bool(false, "Research: FVG lifecycle zones", tooltip = "Opt-in chart-timeframe 3-candle FVG history with tests, midpoint interaction, and closing-price invalidation. Does not change Entry FVGs.", group = PO_G8)
+bool   poCisdFvgStatus  = input.bool(false, "Research: FVG lifecycle labels", tooltip = "Only with research FVG zones enabled. Show confirmation time, first test, first midpoint wick/close crossing, and first full close-through.", group = PO_G8)
+int    poCisdFvgDraw    = input.int(6, "Research: draw FVGs", minval = 1, maxval = 12, group = PO_G8)
+int    poCisdFvgHistory = input.int(80, "Research: retain FVGs", minval = 10, maxval = 120, group = PO_G8)
+int    poCisdFvgExtend  = input.int(24, "Research: FVG zone bars", minval = 3, maxval = 200, group = PO_G8)
+int    poCisdFvgBefore  = input.int(2, "Research: FVG bars before CISD", minval = 0, maxval = 10, tooltip = "FVGs formed up to this many closed chart bars before the CISD can be associated at its confirmation.", group = PO_G8)
+int    poCisdFvgAfter   = input.int(4, "Research: FVG bars after CISD", minval = 0, maxval = 12, tooltip = "Later FVG context is added ONLY after those FVGs themselves confirm. Never backdates knowledge.", group = PO_G8)
+bool   poCisdFvgInLabels = input.bool(false, "Research: include FVG/C2 context in Full labels", tooltip = "Diagnostic only: show first aligned/opposing FVG availability and the subsequent confirmed-C2 close when available. The source CISD is never modified.", group = PO_G8)
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -626,9 +635,9 @@ type PoCisd
     float level
     int   confirmBar
 
-// Immutable confirmation fields plus the first subsequent close-based invalidation.
-// A linked flag is a snapshot: a C2-qualified event remains traceable after the
-// parent sequence is pruned or later invalidated.
+// Immutable confirmation fields plus first subsequent close-based reclamation.
+// A live-C2 association is not proof C2 has closed and qualified; the separate
+// c2ClosedAt timestamp records that later transition, if observed.
 type PoCisdEvent
     bool  bull
     int   startBar
@@ -640,6 +649,24 @@ type PoCisdEvent
     bool  inKillzone
     int   invalidatedBar
     int   invalidatedTime
+    int   alignedFvgBar
+    int   opposingFvgBar
+    int   c2ClosedAt
+
+// Standalone confirmed chart-timeframe 3-candle gap. These are research-only
+// records, not the existing C2-bound entry FVGs and not Propulsion Blocks.
+type PoResearchFvg
+    bool  bull
+    int   bornBar
+    int   bornTime
+    float top
+    float bot
+    float mid
+    int   testedAt
+    int   midpointWickAt
+    int   midpointCloseAt
+    int   invalidatedBar
+    int   invalidatedAt
 
 type PoOpen
     int   bar
@@ -652,6 +679,7 @@ var array<PoRec>  poRecs     = array.new<PoRec>()
 var array<PoSmt>  poSmtMarks = array.new<PoSmt>()
 var array<PoCisd> poCisds    = array.new<PoCisd>()
 var array<PoCisdEvent> poCisdEvents = array.new<PoCisdEvent>()
+var array<PoResearchFvg> poResearchFvgs = array.new<PoResearchFvg>()
 var array<PoOpen> poOpens    = array.new<PoOpen>()
 var array<box>    poBoxes    = array.new<box>()
 var array<line>   poLines    = array.new<line>()
@@ -1517,6 +1545,89 @@ if poCalc and barstate.isconfirmed
             while poCisdEvents.size() > poCisdHistoryKeep
                 poCisdEvents.shift()
 
+// v1.3: observe FVGs independently from legacy Entry FVGs, and enrich
+// confirmed CISD history without modifying the original trigger or C2 logic.
+// All states are updated on confirmed chart closes; first-known timestamps are
+// never filled using prices from future replay bars.
+bool poResearchFvgEnabled = poCalc and po3ShowCisd and poCisdScope == "All + C2 highlighted"
+bool poResearchFvgNew = false
+if poResearchFvgEnabled and barstate.isconfirmed
+    int closedAt = na(time_close) ? time : time_close
+    // A FVG is a completed three-candle price gap, not an OB, CISD or PB.
+    // Qualifying bars are [2], [1], [0]. The new FVG exists only on [0] close.
+    bool bullGap = bar_index >= 2 and low > high[2]
+    bool bearGap = bar_index >= 2 and high < low[2]
+    if bullGap or bearGap
+        bool duplicated = poResearchFvgs.size() > 0 and poResearchFvgs.last().bornBar == bar_index
+        if not duplicated
+            PoResearchFvg rf = PoResearchFvg.new()
+            rf.bull := bullGap
+            rf.bornBar := bar_index
+            rf.bornTime := closedAt
+            rf.top := bullGap ? low : low[2]
+            rf.bot := bullGap ? high[2] : high
+            rf.mid := (rf.top + rf.bot) / 2.0
+            poResearchFvgs.push(rf)
+            poResearchFvgNew := true
+            while poResearchFvgs.size() > poCisdFvgHistory
+                poResearchFvgs.shift()
+    // Update ONLY existing, older FVGs: the creation candle cannot test its
+    // own gap. Midpoint touches (wick) and breaches (close) are independent.
+    if poResearchFvgs.size() > 0
+        for fi = 0 to poResearchFvgs.size() - 1
+            PoResearchFvg rf = poResearchFvgs.get(fi)
+            if rf.bornBar < bar_index and na(rf.invalidatedBar)
+                bool overlap = high >= rf.bot and low <= rf.top
+                bool midWick = rf.bull ? low <= rf.mid : high >= rf.mid
+                bool midClose = rf.bull ? close < rf.mid : close > rf.mid
+                bool crossedFarEdge = rf.bull ? close < rf.bot : close > rf.top
+                if overlap and na(rf.testedAt)
+                    rf.testedAt := closedAt
+                if midWick and na(rf.midpointWickAt)
+                    rf.midpointWickAt := closedAt
+                if midClose and na(rf.midpointCloseAt)
+                    rf.midpointCloseAt := closedAt
+                if crossedFarEdge
+                    rf.invalidatedBar := bar_index
+                    rf.invalidatedAt := closedAt
+
+    // C2 closure is not equivalent to the live C2 link recorded in v1.1.
+    // The first C3 bar opens when the preceding C2 has actually closed;
+    // Bandz considers C2 valid at phase >=3 (sweep + close back inside).
+    if poCisdEvents.size() > 0
+        for ei = 0 to poCisdEvents.size() - 1
+            PoCisdEvent ev = poCisdEvents.get(ei)
+            if ev.c2Linked and na(ev.c2ClosedAt) and not na(ev.c2StartTime) and poRecs.size() > 0
+                for ri = 0 to poRecs.size() - 1
+                    PoRec rc = poRecs.get(ri)
+                    if rc.side == (ev.bull ? 1 : -1) and rc.c2StartTime == ev.c2StartTime and rc.maxPhase >= 3 and not na(rc.c3StartTime)
+                        // A C2 that sweeps a NEW extreme can void the old CISD.
+                        // Confirm only when this original event is still the
+                        // first chart CISD on the qualified C2 record.
+                        if not na(rc.mcBar) and rc.mcBar.get(0) == ev.confirmBar
+                            ev.c2ClosedAt := rc.c3StartTime
+
+    // Associate first CONFIRMED aligned/opposing FVG near each CISD.
+    // Earlier FVGs are already knowable at the CISD close; later FVGs are
+    // attached only when the new gap is closed/confirmed by the current bar.
+    bool freshCisd = poCisdNewBull or poCisdNewBear
+    if (poResearchFvgNew or freshCisd) and poCisdEvents.size() > 0 and poResearchFvgs.size() > 0
+        for ei = 0 to poCisdEvents.size() - 1
+            PoCisdEvent ev = poCisdEvents.get(ei)
+            if bar_index >= ev.confirmBar and bar_index <= ev.confirmBar + poCisdFvgAfter
+                if na(ev.alignedFvgBar) or na(ev.opposingFvgBar)
+                    for fi = poResearchFvgs.size() - 1 to 0
+                        PoResearchFvg rf = poResearchFvgs.get(fi)
+                        bool near = rf.bornBar >= ev.confirmBar - poCisdFvgBefore and rf.bornBar <= ev.confirmBar + poCisdFvgAfter and rf.bornBar <= bar_index
+                        // Earlier gaps must still exist at the CISD close; a gap
+                        // already invalidated before confirmation is not context.
+                        near := near and (rf.bornBar >= ev.confirmBar or na(rf.invalidatedBar) or rf.invalidatedBar > ev.confirmBar)
+                        if near
+                            if rf.bull == ev.bull and na(ev.alignedFvgBar)
+                                ev.alignedFvgBar := rf.bornBar
+                            else if rf.bull != ev.bull and na(ev.opposingFvgBar)
+                                ev.opposingFvgBar := rf.bornBar
+
 // A sequence CISD fails once a candle closes back through it (projections dim from there).
 if poCalc and poRecs.size() > 0
     for i = 0 to poRecs.size() - 1
@@ -2339,6 +2450,11 @@ poRenderProfile() =>
                              "\nOrigin #" + str.tostring(ev.startBar) +
                              " | Confirm " + str.format_time(ev.confirmTime, "MM-dd HH:mm", poTz) +
                              "\n" + str.tostring(ev.level, format.mintick) + " | " + status
+                        if poCisdFvgInLabels
+                            string c2Description = na(ev.c2StartTime) ? "C2: unlinked" : na(ev.c2ClosedAt) ? "C2: live/unconfirmed" : "C2 close " + str.format_time(ev.c2ClosedAt, "MM-dd HH:mm", poTz) + (ev.confirmTime < ev.c2ClosedAt ? " (after CISD)" : " (before CISD)")
+                            detail += "\n" + c2Description
+                            detail += "\nAligned FVG: " + (na(ev.alignedFvgBar) ? "none" : (ev.alignedFvgBar >= ev.confirmBar ? "+" : "") + str.tostring(ev.alignedFvgBar - ev.confirmBar) + " bars")
+                            detail += " | Opp FVG: " + (na(ev.opposingFvgBar) ? "none" : (ev.opposingFvgBar >= ev.confirmBar ? "+" : "") + str.tostring(ev.opposingFvgBar - ev.confirmBar) + " bars")
                         poLabelI(ev.startBar, ev.level, "O", label.style_none, tint, size.tiny)
                         poLabelI(ev.confirmBar + 3, ev.level, detail, label.style_label_left, tint, size.tiny)
                     else
@@ -2349,6 +2465,33 @@ poRenderProfile() =>
                         poLabelI(ev.confirmBar + 3, ev.level, compact, label.style_label_left, tint, size.tiny)
                     labeled += 1
                 shown += 1
+
+    // Independent, opt-in FVG history. A gap is drawn only after its third
+    // chart candle closed. Box midpoint is a reference, not a trade signal.
+    if po3ShowCisd and poCisdScope == "All + C2 highlighted" and poCisdFvgZones and poResearchFvgs.size() > 0
+        int drawnFvgs = 0
+        for fi = poResearchFvgs.size() - 1 to 0
+            PoResearchFvg rf = poResearchFvgs.get(fi)
+            bool drawable = rf.bornBar >= 2 and bar_index - rf.bornBar <= 4800
+            if drawnFvgs < poCisdFvgDraw and drawable
+                bool expired = not na(rf.invalidatedBar)
+                int rightBar = math.min(bar_index, rf.bornBar + poCisdFvgExtend)
+                if expired
+                    rightBar := math.min(rightBar, rf.invalidatedBar)
+                int leftBar = rf.bornBar - 2
+                color base = rf.bull ? poCisdBull : poCisdBear
+                color edge = color.new(base, expired ? 87 : 55)
+                color fill = color.new(base, expired ? 96 : 88)
+                poBoxI(leftBar, rf.top, math.max(leftBar + 1, rightBar), rf.bot, fill, edge, 1)
+                poLineI(leftBar, rf.mid, math.max(leftBar + 1, rightBar), rf.mid, color.new(base, expired ? 90 : 65), line.style_dotted, 1)
+                if poCisdFvgStatus
+                    string diag = (rf.bull ? "Bull" : "Bear") + " FVG " + str.format_time(rf.bornTime, "MM-dd HH:mm", poTz)
+                    diag += "\nTest: " + (na(rf.testedAt) ? "not yet" : str.format_time(rf.testedAt, "MM-dd HH:mm", poTz))
+                    diag += "\nMid wick: " + (na(rf.midpointWickAt) ? "no" : str.format_time(rf.midpointWickAt, "MM-dd HH:mm", poTz))
+                    diag += " | Mid close: " + (na(rf.midpointCloseAt) ? "no" : str.format_time(rf.midpointCloseAt, "MM-dd HH:mm", poTz))
+                    diag += "\nFar-side close: " + (na(rf.invalidatedAt) ? "no" : str.format_time(rf.invalidatedAt, "MM-dd HH:mm", poTz))
+                    poLabelI(math.max(leftBar + 1, rightBar), rf.mid, diag, label.style_label_left, edge, size.tiny)
+                drawnFvgs += 1
 
     0
 
