@@ -143,6 +143,8 @@ int    poCisdFvgExtend  = input.int(24, "Research: FVG zone bars", minval = 3, m
 int    poCisdFvgBefore  = input.int(2, "Research: FVG bars before CISD", minval = 0, maxval = 10, tooltip = "FVGs formed up to this many closed chart bars before the CISD can be associated at its confirmation.", group = PO_G8)
 int    poCisdFvgAfter   = input.int(4, "Research: FVG bars after CISD", minval = 0, maxval = 12, tooltip = "Later FVG context is added ONLY after those FVGs themselves confirm. Never backdates knowledge.", group = PO_G8)
 bool   poCisdFvgInLabels = input.bool(false, "Research: include FVG/C2 context in Full labels", tooltip = "Diagnostic only: show first aligned/opposing FVG availability and the subsequent confirmed-C2 close when available. The source CISD is never modified.", group = PO_G8)
+// v1.4 Phase A is measurement-only: no new triggers, filtering, or retrospective eligibility.
+bool   poCisdStructureLabels = input.bool(false, "Research: structural metrics in Full labels", tooltip = "Opt-in; snapshot the C2 sweep and confirmed-at-CISD status, body/range, ATR14 body, directional close location and FVG timing. Later C2/FVG outcomes are marked separately; never trade historical outcomes as if known earlier.", group = PO_G8)
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -652,6 +654,15 @@ type PoCisdEvent
     int   alignedFvgBar
     int   opposingFvgBar
     int   c2ClosedAt
+    // v1.4: frozen at the original chart candle CLOSE, not recomputed afterward.
+    bool  c2SweepAtConfirm
+    bool  c2QualifiedAtConfirm
+    float bodyToRangeAtConfirm
+    float bodyToAtr14AtConfirm
+    float directionalCloseAtConfirm
+    int   alignedFvgAtConfirmBar
+    // Confirmed later (future to the original CISD). Never retroactively signal.
+    int   alignedFvgLaterBar
 
 // Standalone confirmed chart-timeframe 3-candle gap. These are research-only
 // records, not the existing C2-bound entry FVGs and not Propulsion Blocks.
@@ -1502,6 +1513,9 @@ bool poCisdInKillzone = poCisdKzEligible and
       (poCisdKzNyOn and poCisdInKzNy) or
       (poCisdKzCloseOn and poCisdInKzClose))
 
+// v1.4: calculate continuously so ATR14 is properly initialized even when no CISD fires.
+float poCisdResearchAtr14 = ta.atr(14)
+
 // ── CISD v1.1: confirmed, bounded history for research rendering ─────────────
 // This intentionally does not change poCisds, poCisdInvalidate or poLinkCisd.
 // Recording on a confirmed chart bar avoids preserving intrabar-only signals.
@@ -1523,6 +1537,8 @@ if poCalc and barstate.isconfirmed
         bool alreadyRecorded = poCisdEvents.size() > 0 and poCisdEvents.last().confirmBar == bar_index
         if not alreadyRecorded
             bool linked = false
+            bool sweepAtConfirm = false
+            bool qualifiedAtConfirm = false
             int c2OriginTime = na
             // Exactly the first chart CISD attached by the existing poLinkCisd.
             // This does not claim that other CISDs are structurally invalid.
@@ -1532,6 +1548,10 @@ if poCalc and barstate.isconfirmed
                     if rc.side == (ncEvent.bull ? 1 : -1) and not na(rc.mcBar) and rc.mcBar.get(0) == ncEvent.confirmBar
                         linked := true
                         c2OriginTime := rc.c2StartTime
+                        // Based solely on this record's existing C1/C2 sweep data.
+                        // A live sweep does not imply that C2 has closed back inside.
+                        sweepAtConfirm := ncEvent.bull ? rc.c2Wick < rc.c1Lo : rc.c2Wick > rc.c1Hi
+                        qualifiedAtConfirm := rc.maxPhase >= 3 and not na(rc.c3StartTime) and rc.c3StartTime <= closedAt
             PoCisdEvent added = PoCisdEvent.new()
             added.bull := ncEvent.bull
             added.startBar := ncEvent.startBar
@@ -1541,6 +1561,13 @@ if poCalc and barstate.isconfirmed
             added.c2Linked := linked
             added.c2StartTime := c2OriginTime
             added.inKillzone := poCisdInKillzone
+            added.c2SweepAtConfirm := linked and sweepAtConfirm
+            added.c2QualifiedAtConfirm := linked and sweepAtConfirm and qualifiedAtConfirm
+            float candleRange = high - low
+            float candleBody = math.abs(close - open)
+            added.bodyToRangeAtConfirm := candleRange > 0 ? candleBody / candleRange : na
+            added.bodyToAtr14AtConfirm := not na(poCisdResearchAtr14) and poCisdResearchAtr14 > 0 ? candleBody / poCisdResearchAtr14 : na
+            added.directionalCloseAtConfirm := candleRange > 0 ? (ncEvent.bull ? (close - low) / candleRange : (high - close) / candleRange) : na
             poCisdEvents.push(added)
             while poCisdEvents.size() > poCisdHistoryKeep
                 poCisdEvents.shift()
@@ -1627,6 +1654,26 @@ if poResearchFvgEnabled and barstate.isconfirmed
                                 ev.alignedFvgBar := rf.bornBar
                             else if rf.bull != ev.bull and na(ev.opposingFvgBar)
                                 ev.opposingFvgBar := rf.bornBar
+
+    // v1.4: freeze FVG context knowable at this particular CISD's close.
+    // The same chart candle's completed 3-bar FVG is already confirmed by now.
+    if freshCisd and poCisdEvents.size() > 0 and poResearchFvgs.size() > 0
+        PoCisdEvent ev = poCisdEvents.last()
+        if ev.confirmBar == bar_index
+            for fi = poResearchFvgs.size() - 1 to 0
+                PoResearchFvg rf = poResearchFvgs.get(fi)
+                bool inWindow = rf.bornBar >= ev.confirmBar - poCisdFvgBefore and rf.bornBar <= ev.confirmBar
+                bool validAtClose = na(rf.invalidatedBar) or rf.invalidatedBar > ev.confirmBar
+                if inWindow and validAtClose and rf.bull == ev.bull and na(ev.alignedFvgAtConfirmBar)
+                    ev.alignedFvgAtConfirmBar := rf.bornBar
+    // New gap association can be retrospective context, but not a signal
+    // that existed on the earlier CISD close.
+    if poResearchFvgNew and poResearchFvgs.size() > 0 and poCisdEvents.size() > 0
+        PoResearchFvg newest = poResearchFvgs.last()
+        for ei = 0 to poCisdEvents.size() - 1
+            PoCisdEvent ev = poCisdEvents.get(ei)
+            if newest.bull == ev.bull and newest.bornBar > ev.confirmBar and newest.bornBar <= ev.confirmBar + poCisdFvgAfter and na(ev.alignedFvgLaterBar)
+                ev.alignedFvgLaterBar := newest.bornBar
 
 // A sequence CISD fails once a candle closes back through it (projections dim from there).
 if poCalc and poRecs.size() > 0
@@ -2455,6 +2502,18 @@ poRenderProfile() =>
                             detail += "\n" + c2Description
                             detail += "\nAligned FVG: " + (na(ev.alignedFvgBar) ? "none" : (ev.alignedFvgBar >= ev.confirmBar ? "+" : "") + str.tostring(ev.alignedFvgBar - ev.confirmBar) + " bars")
                             detail += " | Opp FVG: " + (na(ev.opposingFvgBar) ? "none" : (ev.opposingFvgBar >= ev.confirmBar ? "+" : "") + str.tostring(ev.opposingFvgBar - ev.confirmBar) + " bars")
+                        if poCisdStructureLabels
+                            string c2Now = not ev.c2Linked ? "unlinked" : ev.c2QualifiedAtConfirm ? "confirmed at CISD" : "provisional at CISD"
+                            string laterC2 = not ev.c2Linked ? "n/a" : na(ev.c2ClosedAt) ? "not observed" : str.format_time(ev.c2ClosedAt, "MM-dd HH:mm", poTz)
+                            string bodyPct = na(ev.bodyToRangeAtConfirm) ? "n/a" : str.tostring(ev.bodyToRangeAtConfirm * 100, "#.0") + "%"
+                            string atrRatio = na(ev.bodyToAtr14AtConfirm) ? "n/a" : str.tostring(ev.bodyToAtr14AtConfirm, "#.00") + "x"
+                            string closePct = na(ev.directionalCloseAtConfirm) ? "n/a" : str.tostring(ev.directionalCloseAtConfirm * 100, "#.0") + "%"
+                            string fvgThen = na(ev.alignedFvgAtConfirmBar) ? "none" : str.tostring(ev.alignedFvgAtConfirmBar - ev.confirmBar) + " bars"
+                            string fvgLater = na(ev.alignedFvgLaterBar) ? "none" : "+" + str.tostring(ev.alignedFvgLaterBar - ev.confirmBar) + " bars (later)"
+                            detail += "\nC2 at CISD: " + c2Now + " | Sweep: " + (ev.c2SweepAtConfirm ? "yes" : "no")
+                            detail += "\nC2 subsequent close: " + laterC2
+                            detail += "\nBody/range: " + bodyPct + " | Body/ATR14: " + atrRatio + " | Close strength: " + closePct
+                            detail += "\nAligned FVG at CISD: " + fvgThen + " | After: " + fvgLater
                         poLabelI(ev.startBar, ev.level, "O", label.style_none, tint, size.tiny)
                         poLabelI(ev.confirmBar + 3, ev.level, detail, label.style_label_left, tint, size.tiny)
                     else
