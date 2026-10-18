@@ -1,7 +1,7 @@
 # CISD v1.4 — Event-time eligibility audit: implementation specification
 
 **Branch:** `feature/cisd-v1.4-event-time-audit`, based on `feature/cisd-v1.4-phase-b-display-filters` (draft PR #5).
-**Status:** **design pending source integration**. GitHub blocked the Pine file replacement in this session; do not claim that the indicator includes this feature yet.
+**Status:** **implemented in Pine, awaiting TradingView compilation and Bar Replay verification**. Source commit: `9ddf2c70b78f27cc15ecad2488c58f44b1097db9`. This is research instrumentation, not a verified trading signal. GitHub source read-back passed; the GitHub connector cannot compile Pine or test TradingView's chart runtime.
 
 ## Purpose and invariants
 
@@ -67,3 +67,23 @@ On the same EURUSD 15M → 4H feed, timezone America/New_York, confirm:
 6. **Offset + retention:** exercise 0, 1, 19, fewer-than-20 and the 100-event cap; empty registry must not throw. Check that an event with no FVG gets `auditCaptured=true` immediately.
 
 **No trade signals or alerts; no Cephxs parity or validated predictive edge implied.**
+
+## Implementation notes and practical TradingView procedure (2026-10-18)
+
+- The audit capture runs only in the opt-in **All + C2 highlighted** research mode, on a confirmed chart bar, **after** FVG formation, original-window association, confirmation-time association, and later-FVG bookkeeping. A new event with no aligned FVG must still be snapshotted as `auditCaptured=true`, `auditFvgPass=false`.
+- The optional panel is enabled by **4B · CISD structural research → Research: event-time audit panel**, initially OFF. **Research: audit newest-event offset** selects the newest confirmed event (`0`), previous (`1`), etc. Offset `19` is clamped for shorter retained histories.
+- Panel location: bottom-right, 2 columns. **THEN** shows frozen C2 and FVG confirmation-time evidence, metrics and gate results. **AT CLOSE** shows the frozen combined verdict. **LATER** shows retrospective closure/FVG/invalidation observations. A separate **MATCH/DRIFT** field compares the saved verdict with a fresh calculation *only from the event's frozen inputs*. A separate **MISSING FVG RECORD** warning flags an at-close FVG pointer whose immutable formation details could not be recovered.
+- The panel is display-only. Existing raw detection, sequence profiling, legacy overlays, Phase B selection/drawing code, aggregate counts and alerts have not been edited by this commit. Any changed history on **input edits** is an expected TradingView full-script recomputation; unchanged inputs during Bar Replay must not change original snapshots.
+
+### Replay checklist for the operator
+
+1. Copy `Bandz_Po3_Profiler.pine` from **this branch** into a separate TradingView Pine v6 indicator; compile. Record exact errors/warnings and confirm no resource-limit problems when the new panel is OFF.
+2. Use the same `EURUSD` feed as the earlier tests, **15-minute chart → 4H Po3 profile**, `America/New_York` timezone. Set **CISD → All + C2 highlighted**, `Research: retain events = 100`, and `Research: event-time audit panel = ON`. Keep the existing Phase B settings unchanged when comparing with the previous branch.
+3. Around **2026-10-16 NY 08:15 bearish CISD**, step one **closed** 15-minute candle at a time. Use offset `0` first and adjust to the matching event by **direction, confirmation time, start/confirm bars and price**, not by the newest number alone. Note **FVG THEN = none** and the **AT CLOSE** verdict. Advance to the later FVG candle: **LATER** may change, but **FVG THEN** and **AT CLOSE** must not.
+4. Around **2026-10-08 bullish CISD linked to a live C2**, note **C2 THEN** when it first confirms. Advance beyond the later qualified C2 closure: the `LATER` field may fill while **C2 THEN** remains provisional.
+5. Locate one CISD sharing a confirming candle with an aligned FVG. **THEN FVG born bar offset = 0**, with formation timestamp no later than CISD confirmation and immutable top/bottom after subsequent replay candles.
+6. Record **MATCH** (not DRIFT or MISSING AUDIT) on at least three cases, including a non-eligible event; check the separate FVG-record-integrity row where an at-close FVG exists. **MATCH** is necessary for internal consistency but does not prove replay determinism.
+7. Toggle the audit panel OFF and ON at the same replay endpoint, comparing raw CISD presence, Po3 phases, eligible/drawn counts, and overlays against the Phase B branch. Note that TradingView recomputes when changing inputs.
+8. Check offset `0`, `1`, `19`, fewer than 20 events, a long replay with 100 retained events, and an empty-registry scenario. No out-of-bounds or table/object-limit errors should appear.
+
+**Acceptance gate:** Do not merge into Phase B PR #5 or claim validated non-repainting behavior until Pine compilation and the three key replay invariants above are independently observed. This branch does not introduce alerts or execution.
