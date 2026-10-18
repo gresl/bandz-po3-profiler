@@ -2510,8 +2510,8 @@ poRenderProfile() =>
                             string closePct = na(ev.directionalCloseAtConfirm) ? "n/a" : str.tostring(ev.directionalCloseAtConfirm * 100, "#.0") + "%"
                             string fvgThen = na(ev.alignedFvgAtConfirmBar) ? "none" : str.tostring(ev.alignedFvgAtConfirmBar - ev.confirmBar) + " bars"
                             string fvgLater = na(ev.alignedFvgLaterBar) ? "none" : "+" + str.tostring(ev.alignedFvgLaterBar - ev.confirmBar) + " bars (later)"
-                            detail += "\nC2 at CISD: " + c2Now + " | Sweep: " + (ev.c2SweepAtConfirm ? "yes" : "no")
-                            detail += "\nC2 subsequent close: " + laterC2
+                            detail += "\nC2 at CISD: " + c2Now + " | Sweep: " + (not ev.c2Linked ? "n/a" : ev.c2SweepAtConfirm ? "yes" : "no")
+                            detail += "\nC2 closed (observed): " + laterC2
                             detail += "\nBody/range: " + bodyPct + " | Body/ATR14: " + atrRatio + " | Close strength: " + closePct
                             detail += "\nAligned FVG at CISD: " + fvgThen + " | After: " + fvgLater
                         poLabelI(ev.startBar, ev.level, "O", label.style_none, tint, size.tiny)
