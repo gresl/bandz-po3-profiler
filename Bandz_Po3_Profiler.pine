@@ -1,4 +1,5 @@
 //@version=6
+// Connector full-size Pine write smoke test (isolated branch; nonfunctional).
 // Bandz Po3 Profiler. Original implementation: HTF candles (3 lanes, FVG / VI, badges), C1/C2/C3/C4
 // profiling with T-Spot, PSP, SMT on a 15m-1D ladder plus SSMT on 90m / 6H quarters, CISD, status bar,
 // and 4-asset auto correlations (indices NQ / ES / YM / RTY, metals, energy, bonds, FX, BTC / ETH).
