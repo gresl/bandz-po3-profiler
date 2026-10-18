@@ -156,6 +156,9 @@ float  poCisdQualAtr = input.float(0.6, "Min body/ATR14", minval = 0, maxval = 5
 float  poCisdQualClosePct = input.float(70.0, "Min directional close %", minval = 0, maxval = 100, step = 5, group = PO_G8B)
 bool   poCisdQualFvg = input.bool(false, "Structural: require aligned FVG known at CISD", tooltip = "Requires a same-direction, uninvalidated three-candle chart FVG already confirmed by the CISD close (including a same-bar FVG at close). Never counts FVGs created later.", group = PO_G8B)
 bool   poCisdQualStats = input.bool(false, "Structural: show filter counts", tooltip = "Bottom-left research panel. Counts span the retained CISD history, not all available bars. Eligible applies v1.2 draw filter + the Phase B requirements + invalidation display setting and 4800-bar recency.", group = PO_G8B)
+// v1.4 event-time audit: inspect one immutable confirmation decision; no signal or draw changes.
+bool   poCisdAuditOn = input.bool(false, "Research: event-time audit panel", tooltip = "Bottom-right: frozen decision at the original CISD close versus later outcomes. Research mode only.", group = PO_G8B)
+int    poCisdAuditOffset = input.int(0, "Research: audit newest-event offset", minval = 0, maxval = 19, tooltip = "0 = newest retained confirmed CISD, 1 = previous, etc. Clamped when fewer events exist.", group = PO_G8B)
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -674,6 +677,16 @@ type PoCisdEvent
     int   alignedFvgAtConfirmBar
     // Confirmed later (future to the original CISD). Never retroactively signal.
     int   alignedFvgLaterBar
+    // Immutable event-time eligibility audit (captured once after same-close FVG association).
+    bool  auditCaptured
+    bool  auditContextPass
+    bool  auditC2Pass
+    bool  auditDisplacementPass
+    bool  auditFvgPass
+    bool  auditCombinedPass
+    int   auditFvgBornTime
+    float auditFvgTop
+    float auditFvgBot
 
 // Only frozen snapshots from the original confirmation bar are eligible for Phase B.
 // Never consult c2ClosedAt or alignedFvgLaterBar for signal-at-close selection.
@@ -1600,6 +1613,7 @@ if poCalc and barstate.isconfirmed
             added.bodyToRangeAtConfirm := candleRange > 0 ? candleBody / candleRange : na
             added.bodyToAtr14AtConfirm := not na(poCisdResearchAtr14) and poCisdResearchAtr14 > 0 ? candleBody / poCisdResearchAtr14 : na
             added.directionalCloseAtConfirm := candleRange > 0 ? (ncEvent.bull ? (close - low) / candleRange : (high - close) / candleRange) : na
+            added.auditCaptured := false
             poCisdEvents.push(added)
             while poCisdEvents.size() > poCisdHistoryKeep
                 poCisdEvents.shift()
@@ -1706,6 +1720,31 @@ if poResearchFvgEnabled and barstate.isconfirmed
             PoCisdEvent ev = poCisdEvents.get(ei)
             if newest.bull == ev.bull and newest.bornBar > ev.confirmBar and newest.bornBar <= ev.confirmBar + poCisdFvgAfter and na(ev.alignedFvgLaterBar)
                 ev.alignedFvgLaterBar := newest.bornBar
+
+    // Capture the event-time audit ONCE, after same-bar FVG discovery and
+    // all at-confirmation associations. Later C2 closures, future FVGs,
+    // invalidations and render settings cannot rewrite these audit fields.
+    if freshCisd and poCisdEvents.size() > 0
+        PoCisdEvent ev = poCisdEvents.last()
+        if ev.confirmBar == bar_index and not ev.auditCaptured
+            if not na(ev.alignedFvgAtConfirmBar) and poResearchFvgs.size() > 0
+                for fi = poResearchFvgs.size() - 1 to 0
+                    PoResearchFvg rf = poResearchFvgs.get(fi)
+                    if rf.bornBar == ev.alignedFvgAtConfirmBar and rf.bull == ev.bull and rf.bornTime <= ev.confirmTime
+                        ev.auditFvgBornTime := rf.bornTime
+                        ev.auditFvgTop := rf.top
+                        ev.auditFvgBot := rf.bot
+                        break
+            ev.auditContextPass := poCisdBaselineContextPass(ev)
+            ev.auditC2Pass := poCisdQualC2 == "Off" or
+                 (poCisdQualC2 == "C1 swept at CISD" and ev.c2SweepAtConfirm) or
+                 (poCisdQualC2 == "C2 already confirmed at CISD" and ev.c2QualifiedAtConfirm)
+            ev.auditDisplacementPass := poCisdDispPass(ev)
+            ev.auditFvgPass := not na(ev.alignedFvgAtConfirmBar)
+            ev.auditCombinedPass := ev.auditContextPass and ev.auditC2Pass and
+                 (not poCisdQualDisp or ev.auditDisplacementPass) and
+                 (not poCisdQualFvg or ev.auditFvgPass)
+            ev.auditCaptured := true
 
 // A sequence CISD fails once a candle closes back through it (projections dim from there).
 if poCalc and poRecs.size() > 0
@@ -1991,6 +2030,7 @@ color poNoBorder = color.new(color.white, 100)
 var table poHdr = table.new(position.top_center, 1, 2)
 var table poPnl = poChecklist ? table.new(position.middle_right, 2, 7) : na
 var table poCisdQualPanel = poCisdQualStats ? table.new(position.bottom_left, 2, 9, bgcolor = color.new(color.black, 16)) : na
+var table poCisdAuditPanel = poCisdAuditOn and po3ShowCisd and poCisdScope == "All + C2 highlighted" ? table.new(position.bottom_right, 2, 20, bgcolor = color.new(color.black, 16)) : na
 
 poClearAll() =>
     while poBoxes.size() > 0
@@ -2630,6 +2670,76 @@ poUpdateCisdQualCounts() =>
     table.cell(poCisdQualPanel, 1, 8, str.tostring(poCisdQualBodyPct, "#") + "/" + str.tostring(poCisdQualAtr, "#.0") + "/" + str.tostring(poCisdQualClosePct, "#"), text_color = tc, text_size = size.tiny)
     0
 
+// Optional event-time audit: one retained event selected by newest-first
+// offset, with confirmation-time evidence isolated from later observations.
+// MATCH checks predicate consistency, not replay determinism or trade quality.
+poUpdateCisdAudit() =>
+    color tc = color.white
+    color dim = color.silver
+    int retained = poCisdEvents.size()
+    table.cell(poCisdAuditPanel, 0, 0, "CISD EVENT-TIME AUDIT", text_color = tc, text_size = size.tiny)
+    table.cell(poCisdAuditPanel, 1, 0, "Offset " + str.tostring(poCisdAuditOffset) + " / retained " + str.tostring(retained), text_color = tc, text_size = size.tiny)
+    if retained == 0
+        table.cell(poCisdAuditPanel, 0, 1, "No confirmed CISD events", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 1, "Await next close", text_color = dim, text_size = size.tiny)
+    else
+        int selected = retained - 1 - math.min(poCisdAuditOffset, retained - 1)
+        PoCisdEvent ev = poCisdEvents.get(selected)
+        string ts = str.format_time(ev.confirmTime, "yyyy-MM-dd HH:mm", poTz)
+        string c2Ts = na(ev.c2StartTime) ? "none" : str.format_time(ev.c2StartTime, "MM-dd HH:mm", poTz)
+        string fvgTs = na(ev.auditFvgBornTime) ? "none" : str.format_time(ev.auditFvgBornTime, "MM-dd HH:mm", poTz)
+        string topBot = na(ev.auditFvgTop) or na(ev.auditFvgBot) ? "none" :
+             str.tostring(ev.auditFvgTop, format.mintick) + " / " + str.tostring(ev.auditFvgBot, format.mintick)
+        string c2Later = na(ev.c2ClosedAt) ? "not observed" : str.format_time(ev.c2ClosedAt, "MM-dd HH:mm", poTz)
+        string fvgLater = na(ev.alignedFvgLaterBar) ? "none" : "+" + str.tostring(ev.alignedFvgLaterBar - ev.confirmBar) + " bars"
+        string invLater = na(ev.invalidatedTime) ? "not observed" : str.format_time(ev.invalidatedTime, "MM-dd HH:mm", poTz)
+        string bodyPct = na(ev.bodyToRangeAtConfirm) ? "n/a" : str.tostring(ev.bodyToRangeAtConfirm * 100, "#.0") + "%"
+        string atrRatio = na(ev.bodyToAtr14AtConfirm) ? "n/a" : str.tostring(ev.bodyToAtr14AtConfirm, "#.00") + "x"
+        string closePct = na(ev.directionalCloseAtConfirm) ? "n/a" : str.tostring(ev.directionalCloseAtConfirm * 100, "#.0") + "%"
+        bool recomputed = poCisdBaselineContextPass(ev) and poCisdStructuralPass(ev)
+        bool fvgRecordMismatch = not na(ev.alignedFvgAtConfirmBar) and
+             (na(ev.auditFvgBornTime) or na(ev.auditFvgTop) or na(ev.auditFvgBot))
+        string consistency = not ev.auditCaptured ? "MISSING AUDIT" : ev.auditCombinedPass == recomputed ? "MATCH" : "DRIFT"
+        table.cell(poCisdAuditPanel, 0, 1, "Feed", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 1, syminfo.tickerid, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 2, "CISD close (" + poTz + ")", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 2, (ev.bull ? "BULL " : "BEAR ") + ts, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 3, "Start / confirm bar", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 3, str.tostring(ev.startBar) + " / " + str.tostring(ev.confirmBar), text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 4, "CISD price", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 4, str.tostring(ev.level, format.mintick), text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 5, "THEN: C2 linked / starts", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 5, (ev.c2Linked ? "yes / " : "no / ") + c2Ts, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 6, "THEN: C1 swept / C2 closed", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 6, (ev.c2SweepAtConfirm ? "Y" : "N") + " / " + (ev.c2QualifiedAtConfirm ? "Y" : "N"), text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 7, "THEN: body/range / body/ATR", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 7, bodyPct + " / " + atrRatio, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 8, "THEN: directional close", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 8, closePct, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 9, "THEN: aligned FVG bar / born", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 9, (na(ev.alignedFvgAtConfirmBar) ? "none" : str.tostring(ev.alignedFvgAtConfirmBar - ev.confirmBar)) + " / " + fvgTs, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 10, "THEN: FVG top / bottom", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 10, topBot, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 11, "THEN: context / C2 gates", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 11, (ev.auditContextPass ? "PASS" : "FAIL") + " / " + (ev.auditC2Pass ? "PASS" : "FAIL"), text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 12, "THEN: disp / FVG predicates", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 12, (ev.auditDisplacementPass ? "PASS" : "FAIL") + " / " + (ev.auditFvgPass ? "PASS" : "FAIL"), text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 13, "AT CLOSE: eligibility", text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 13, not ev.auditCaptured ? "NOT CAPTURED" : ev.auditCombinedPass ? "ELIGIBLE" : "INELIGIBLE", text_color = ev.auditCaptured and ev.auditCombinedPass ? color.lime : color.orange, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 14, "Frozen vs current predicates", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 14, consistency, text_color = consistency == "MATCH" ? color.lime : color.red, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 15, "LATER: C2 closure observed", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 15, c2Later, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 16, "LATER: aligned FVG", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 16, fvgLater, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 17, "LATER: invalidated close", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 17, invLater, text_color = tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 18, "FVG record integrity", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 18, fvgRecordMismatch ? "MISSING FVG RECORD" : "OK / none", text_color = fvgRecordMismatch ? color.red : tc, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 0, 19, "Note", text_color = dim, text_size = size.tiny)
+        table.cell(poCisdAuditPanel, 1, 19, "Outcomes are not at-close evidence", text_color = dim, text_size = size.tiny)
+    0
+
 poRenderSmt() =>
     if po3ShowSmt and poSmtChart and poSmtMarks.size() > 0
         int nm = poSmtMarks.size()
@@ -2669,5 +2779,7 @@ if barstate.islast and bandzModulePo3
     poRenderSmt()
     if poCisdQualStats and po3ShowCisd and poCisdScope == "All + C2 highlighted"
         poUpdateCisdQualCounts()
+    if poCisdAuditOn and po3ShowCisd and poCisdScope == "All + C2 highlighted"
+        poUpdateCisdAudit()
     if po3ShowTable
         poUpdateMinimal()
