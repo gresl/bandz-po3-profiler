@@ -159,6 +159,8 @@ bool   poCisdQualStats = input.bool(false, "Structural: show filter counts", too
 // v1.4 event-time audit: inspect one immutable confirmation decision; no signal or draw changes.
 bool   poCisdAuditOn = input.bool(false, "Research: event-time audit panel", tooltip = "Bottom-right: frozen decision at the original CISD close versus later outcomes. Research mode only.", group = PO_G8B)
 int    poCisdAuditOffset = input.int(0, "Research: audit newest-event offset", minval = 0, maxval = 19, tooltip = "0 = newest retained confirmed CISD, 1 = previous, etc. Clamped when fewer events exist.", group = PO_G8B)
+// Phase C outcomes are retrospective measurements only. They are never eligible-at-close inputs.
+bool   poCisdOutcomeOn = input.bool(false, "Research: later 16/32-bar outcomes", tooltip = "Requires the event-time audit panel for display. Uses only subsequent CLOSED chart candles, with the CISD confirmation close and ATR14 frozen as reference. No entries or alerts.", group = PO_G8B)
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -687,6 +689,18 @@ type PoCisdEvent
     int   auditFvgBornTime
     float auditFvgTop
     float auditFvgBot
+    // Phase C: separate forward-only, closed-bar observations (not qualification inputs).
+    float outcomeRefClose
+    float outcomeRefAtr14
+    int   outcomeBarsSeen
+    float outcomeHigh16
+    float outcomeLow16
+    float outcomeClose16
+    float outcomeHigh32
+    float outcomeLow32
+    float outcomeClose32
+    int   outcomeFirstFavBar
+    int   outcomeFirstAdvBar
 
 // Only frozen snapshots from the original confirmation bar are eligible for Phase B.
 // Never consult c2ClosedAt or alignedFvgLaterBar for signal-at-close selection.
@@ -1614,6 +1628,9 @@ if poCalc and barstate.isconfirmed
             added.bodyToAtr14AtConfirm := not na(poCisdResearchAtr14) and poCisdResearchAtr14 > 0 ? candleBody / poCisdResearchAtr14 : na
             added.directionalCloseAtConfirm := candleRange > 0 ? (ncEvent.bull ? (close - low) / candleRange : (high - close) / candleRange) : na
             added.auditCaptured := false
+            added.outcomeRefClose := close
+            added.outcomeRefAtr14 := poCisdResearchAtr14
+            added.outcomeBarsSeen := 0
             poCisdEvents.push(added)
             while poCisdEvents.size() > poCisdHistoryKeep
                 poCisdEvents.shift()
@@ -1745,6 +1762,32 @@ if poResearchFvgEnabled and barstate.isconfirmed
                  (not poCisdQualDisp or ev.auditDisplacementPass) and
                  (not poCisdQualFvg or ev.auditFvgPass)
             ev.auditCaptured := true
+
+// Phase C: POST-confirmation outcome observations (research only).
+// The confirmation candle is excluded: age starts at 1. No lookahead, no entries.
+// Values are never consumed by original CISD, C1/C2, FVG or Phase B eligibility.
+if poCisdOutcomeOn and poResearchFvgEnabled and barstate.isconfirmed and poCisdEvents.size() > 0
+    for ei = 0 to poCisdEvents.size() - 1
+        PoCisdEvent ev = poCisdEvents.get(ei)
+        int age = bar_index - ev.confirmBar
+        if age > 0 and age <= 32
+            ev.outcomeBarsSeen := age
+            ev.outcomeHigh32 := na(ev.outcomeHigh32) ? high : math.max(ev.outcomeHigh32, high)
+            ev.outcomeLow32 := na(ev.outcomeLow32) ? low : math.min(ev.outcomeLow32, low)
+            if age <= 16
+                ev.outcomeHigh16 := na(ev.outcomeHigh16) ? high : math.max(ev.outcomeHigh16, high)
+                ev.outcomeLow16 := na(ev.outcomeLow16) ? low : math.min(ev.outcomeLow16, low)
+                if age == 16
+                    ev.outcomeClose16 := close
+            if age == 32
+                ev.outcomeClose32 := close
+            if not na(ev.outcomeRefAtr14) and ev.outcomeRefAtr14 > 0
+                bool favorsOneAtr = ev.bull ? high >= ev.outcomeRefClose + ev.outcomeRefAtr14 : low <= ev.outcomeRefClose - ev.outcomeRefAtr14
+                bool adverseOneAtr = ev.bull ? low <= ev.outcomeRefClose - ev.outcomeRefAtr14 : high >= ev.outcomeRefClose + ev.outcomeRefAtr14
+                if favorsOneAtr and na(ev.outcomeFirstFavBar)
+                    ev.outcomeFirstFavBar := age
+                if adverseOneAtr and na(ev.outcomeFirstAdvBar)
+                    ev.outcomeFirstAdvBar := age
 
 // A sequence CISD fails once a candle closes back through it (projections dim from there).
 if poCalc and poRecs.size() > 0
@@ -2030,7 +2073,7 @@ color poNoBorder = color.new(color.white, 100)
 var table poHdr = table.new(position.top_center, 1, 2)
 var table poPnl = poChecklist ? table.new(position.middle_right, 2, 7) : na
 var table poCisdQualPanel = poCisdQualStats ? table.new(position.bottom_left, 2, 9, bgcolor = color.new(color.black, 16)) : na
-var table poCisdAuditPanel = poCisdAuditOn and po3ShowCisd and poCisdScope == "All + C2 highlighted" ? table.new(position.bottom_right, 2, 20, bgcolor = color.new(color.black, 16)) : na
+var table poCisdAuditPanel = poCisdAuditOn and po3ShowCisd and poCisdScope == "All + C2 highlighted" ? table.new(position.bottom_right, 2, poCisdOutcomeOn ? 26 : 20, bgcolor = color.new(color.black, 16)) : na
 
 poClearAll() =>
     while poBoxes.size() > 0
@@ -2670,6 +2713,13 @@ poUpdateCisdQualCounts() =>
     table.cell(poCisdQualPanel, 1, 8, str.tostring(poCisdQualBodyPct, "#") + "/" + str.tostring(poCisdQualAtr, "#.0") + "/" + str.tostring(poCisdQualClosePct, "#"), text_color = tc, text_size = size.tiny)
     0
 
+// With OHLC candles, two opposing 1-ATR touches in the same bar have unknown order.
+poCisdOutcomeFirstHit(int favAt, int advAt, int horizon, int barsSeen) =>
+    bool f = not na(favAt) and favAt <= horizon
+    bool a = not na(advAt) and advAt <= horizon
+    string first = f and a ? (favAt == advAt ? "AMBIGUOUS same bar" : favAt < advAt ? "F first" : "A first") : f ? "F only" : a ? "A only" : "none"
+    (barsSeen >= horizon ? "FINAL " : "PARTIAL ") + first
+
 // Optional event-time audit: one retained event selected by newest-first
 // offset, with confirmation-time evidence isolated from later observations.
 // MATCH checks predicate consistency, not replay determinism or trade quality.
@@ -2738,6 +2788,26 @@ poUpdateCisdAudit() =>
         table.cell(poCisdAuditPanel, 1, 18, fvgRecordMismatch ? "MISSING FVG RECORD" : "OK / none", text_color = fvgRecordMismatch ? color.red : tc, text_size = size.tiny)
         table.cell(poCisdAuditPanel, 0, 19, "Note", text_color = dim, text_size = size.tiny)
         table.cell(poCisdAuditPanel, 1, 19, "Outcomes are not at-close evidence", text_color = dim, text_size = size.tiny)
+        if poCisdOutcomeOn
+            bool atrOk = not na(ev.outcomeRefAtr14) and ev.outcomeRefAtr14 > 0 and not na(ev.outcomeRefClose)
+            float mfe16 = atrOk and not na(ev.outcomeHigh16) and not na(ev.outcomeLow16) ? math.max(0.0, (ev.bull ? ev.outcomeHigh16 - ev.outcomeRefClose : ev.outcomeRefClose - ev.outcomeLow16) / ev.outcomeRefAtr14) : na
+            float mae16 = atrOk and not na(ev.outcomeHigh16) and not na(ev.outcomeLow16) ? math.max(0.0, (ev.bull ? ev.outcomeRefClose - ev.outcomeLow16 : ev.outcomeHigh16 - ev.outcomeRefClose) / ev.outcomeRefAtr14) : na
+            float mfe32 = atrOk and not na(ev.outcomeHigh32) and not na(ev.outcomeLow32) ? math.max(0.0, (ev.bull ? ev.outcomeHigh32 - ev.outcomeRefClose : ev.outcomeRefClose - ev.outcomeLow32) / ev.outcomeRefAtr14) : na
+            float mae32 = atrOk and not na(ev.outcomeHigh32) and not na(ev.outcomeLow32) ? math.max(0.0, (ev.bull ? ev.outcomeRefClose - ev.outcomeLow32 : ev.outcomeHigh32 - ev.outcomeRefClose) / ev.outcomeRefAtr14) : na
+            float terminal16 = atrOk and not na(ev.outcomeClose16) ? (ev.bull ? ev.outcomeClose16 - ev.outcomeRefClose : ev.outcomeRefClose - ev.outcomeClose16) / ev.outcomeRefAtr14 : na
+            float terminal32 = atrOk and not na(ev.outcomeClose32) ? (ev.bull ? ev.outcomeClose32 - ev.outcomeRefClose : ev.outcomeRefClose - ev.outcomeClose32) / ev.outcomeRefAtr14 : na
+            table.cell(poCisdAuditPanel, 0, 20, "C LATER: reference close / ATR14", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, 20, str.tostring(ev.outcomeRefClose, format.mintick) + " / " + (atrOk ? str.tostring(ev.outcomeRefAtr14, format.mintick) : "n/a"), text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, 21, "C LATER: closed bars observed", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, 21, str.tostring(ev.outcomeBarsSeen) + " of 32 (confirm bar excluded)", text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, 22, "C 16: MFE / MAE in ATR", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, 22, atrOk and not na(mfe16) ? str.tostring(mfe16, "#.00") + " / " + str.tostring(mae16, "#.00") : "n/a", text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, 23, "C 16: terminal ATR / first-hit", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, 23, (na(terminal16) ? "not final" : str.tostring(terminal16, "#.00")) + " / " + (atrOk ? poCisdOutcomeFirstHit(ev.outcomeFirstFavBar, ev.outcomeFirstAdvBar, 16, ev.outcomeBarsSeen) : "N/A ATR"), text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, 24, "C 32: MFE / MAE in ATR", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, 24, atrOk and not na(mfe32) ? str.tostring(mfe32, "#.00") + " / " + str.tostring(mae32, "#.00") : "n/a", text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, 25, "C 32: terminal ATR / first-hit", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, 25, (na(terminal32) ? "not final" : str.tostring(terminal32, "#.00")) + " / " + (atrOk ? poCisdOutcomeFirstHit(ev.outcomeFirstFavBar, ev.outcomeFirstAdvBar, 32, ev.outcomeBarsSeen) : "N/A ATR"), text_color = tc, text_size = size.tiny)
     0
 
 poRenderSmt() =>
