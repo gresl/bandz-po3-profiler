@@ -64,3 +64,16 @@ At 30–50 cases report:
 Use `research/cisd_phase_c_sample.csv`. It deliberately starts with **headers only**, not invented cases. Never enter future observations in at-close columns. Raw/manual labels and outcome columns are logically independent.
 
 **First development deliverable:** the closeout + this protocol + empty manifest. It introduces **zero Pine risk** and provides an agreed metric contract before adding optional event-outcome code.
+
+## 7. Phase C C2 code status (first optional implementation)
+
+**Implemented on this Phase C branch; NOT yet Pine-compiled or TradingView-replayed.** Commit `9787d74` adds:
+
+- `Research: later 16/32-bar outcomes` (default **OFF**), only in `All + C2 highlighted` research mode.
+- Immutable confirmation-close and ATR14 references on the retained event; no change to raw CISD triggers, Phase B eligibility, existing C2/FVG linking or legacy renderers.
+- Post-event **closed-bar** accumulation for bars +1 through +16 and +32, including max high/min low, horizon terminal close and first 1-ATR directional/adverse touches.
+- Six optional rows in the existing event-time audit panel (enable **both** `Research: event-time audit panel` and `Research: later 16/32-bar outcomes`). These rows show selected event offset's reference, number of closed bars observed, MFE/MAE, terminal return and first-hit ordering. `PARTIAL`/ `FINAL` and `AMBIGUOUS same bar` are deliberate states.
+
+**First acceptance session (user action):** Compile the complete `Bandz_Po3_Profiler.pine` from this branch in TradingView Pine v6, EURUSD 15m->4h. With both switches OFF verify existing drawings. Then enable audit + outcomes at an event's confirmation candle close: `closed bars observed = 0`, forward MFE/MAE n/a. Advance one **completed** 15m candle: `closed bars observed = 1`, only LATER rows may move; frozen THEN/AT CLOSE and MATCH must not. After +16 bars, 16-bar terminal and hit status must say FINAL; after +32 bars, the 32-bar status must also finalize. Check the same selected event with audit offsets 0 and 1 while the newer event comes in. A both-sides 1-ATR touch within one candle must be labeled AMBIGUOUS, not a favorable win. Confirm no Pine runtime/object-limit error.
+
+**Important limitations:** the study manifest is not auto-exported by this initial UI slice; rows require review/capture. The chart screenshots and user compilation will be the first runtime validation. The first-hit result uses OHLC high/low, so intrabar order remains unknown in ties. Counts are for retained events, not a universal population. No claims of TradingView runtime validation before the operator's report.
