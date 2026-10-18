@@ -44,6 +44,7 @@ const string PO_G1  = "1 · Setup"
 const string PO_G10 = "2 · Assets"
 const string PO_G6  = "3 · Po3 profile (C1-C4)"
 const string PO_G8  = "4 · CISD + STDV"
+const string PO_G8B = "4B · CISD structural research"
 const string PO_G3  = "5 · SMT / SSMT"
 const string PO_GP  = "6 · PSP"
 const string PO_G4  = "7 · HTF candles"
@@ -145,6 +146,16 @@ int    poCisdFvgAfter   = input.int(4, "Research: FVG bars after CISD", minval =
 bool   poCisdFvgInLabels = input.bool(false, "Research: include FVG/C2 context in Full labels", tooltip = "Diagnostic only: show first aligned/opposing FVG availability and the subsequent confirmed-C2 close when available. The source CISD is never modified.", group = PO_G8)
 // v1.4 Phase A is measurement-only: no new triggers, filtering, or retrospective eligibility.
 bool   poCisdStructureLabels = input.bool(false, "Research: structural metrics in Full labels", tooltip = "Opt-in; snapshot the C2 sweep and confirmed-at-CISD status, body/range, ATR14 body, directional close location and FVG timing. Later C2/FVG outcomes are marked separately; never trade historical outcomes as if known earlier.", group = PO_G8)
+// v1.4 Phase B: optional DRAW-ONLY eligibility, explicitly as-known at the CISD close.
+// These are exploratory thresholds and have not been optimized or proven predictive.
+// Every switch defaults to Off, preserving v1.3 / Phase A presentation.
+string poCisdQualC2 = input.string("Off", "Structural: C2 requirement", options = ["Off", "C1 swept at CISD", "C2 already confirmed at CISD"], tooltip = "C1 swept checks Bandz's stored C2 wick against C1. Already confirmed requires a qualified CLOSED C2 no later than the CISD confirmation. Never uses C2 confirmed afterward.", group = PO_G8B)
+bool   poCisdQualDisp = input.bool(false, "Structural: require displacement", tooltip = "AND all three frozen metrics on the confirming chart candle. Defaults below are research hypotheses, not calibrated quality thresholds.", group = PO_G8B)
+float  poCisdQualBodyPct = input.float(55.0, "Min body/range %", minval = 0, maxval = 100, step = 5, group = PO_G8B)
+float  poCisdQualAtr = input.float(0.6, "Min body/ATR14", minval = 0, maxval = 5, step = 0.1, group = PO_G8B)
+float  poCisdQualClosePct = input.float(70.0, "Min directional close %", minval = 0, maxval = 100, step = 5, group = PO_G8B)
+bool   poCisdQualFvg = input.bool(false, "Structural: require aligned FVG known at CISD", tooltip = "Requires a same-direction, uninvalidated three-candle chart FVG already confirmed by the CISD close (including a same-bar FVG at close). Never counts FVGs created later.", group = PO_G8B)
+bool   poCisdQualStats = input.bool(false, "Structural: show filter counts", tooltip = "Bottom-left research panel. Counts span the retained CISD history, not all available bars. Eligible applies v1.2 draw filter + the Phase B requirements + invalidation display setting and 4800-bar recency.", group = PO_G8B)
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -663,6 +674,27 @@ type PoCisdEvent
     int   alignedFvgAtConfirmBar
     // Confirmed later (future to the original CISD). Never retroactively signal.
     int   alignedFvgLaterBar
+
+// Only frozen snapshots from the original confirmation bar are eligible for Phase B.
+// Never consult c2ClosedAt or alignedFvgLaterBar for signal-at-close selection.
+poCisdDispPass(PoCisdEvent ev) =>
+    not na(ev.bodyToRangeAtConfirm) and not na(ev.bodyToAtr14AtConfirm) and not na(ev.directionalCloseAtConfirm) and
+     ev.bodyToRangeAtConfirm * 100 >= poCisdQualBodyPct and
+     ev.bodyToAtr14AtConfirm >= poCisdQualAtr and
+     ev.directionalCloseAtConfirm * 100 >= poCisdQualClosePct
+
+poCisdBaselineContextPass(PoCisdEvent ev) =>
+    poCisdViewFilter == "All" or
+     (poCisdViewFilter == "C2-associated" and ev.c2Linked) or
+     (poCisdViewFilter == "Killzones" and ev.inKillzone) or
+     (poCisdViewFilter == "C2-associated + Killzones" and ev.c2Linked and ev.inKillzone)
+
+poCisdStructuralPass(PoCisdEvent ev) =>
+    bool c2Pass = poCisdQualC2 == "Off" or
+     (poCisdQualC2 == "C1 swept at CISD" and ev.c2SweepAtConfirm) or
+     (poCisdQualC2 == "C2 already confirmed at CISD" and ev.c2QualifiedAtConfirm)
+    c2Pass and (not poCisdQualDisp or poCisdDispPass(ev)) and
+     (not poCisdQualFvg or not na(ev.alignedFvgAtConfirmBar))
 
 // Standalone confirmed chart-timeframe 3-candle gap. These are research-only
 // records, not the existing C2-bound entry FVGs and not Propulsion Blocks.
@@ -1958,6 +1990,7 @@ color poNoBorder = color.new(color.white, 100)
 
 var table poHdr = table.new(position.top_center, 1, 2)
 var table poPnl = poChecklist ? table.new(position.middle_right, 2, 7) : na
+var table poCisdQualPanel = poCisdQualStats ? table.new(position.bottom_left, 2, 9, bgcolor = color.new(color.black, 16)) : na
 
 poClearAll() =>
     while poBoxes.size() > 0
@@ -2477,11 +2510,9 @@ poRenderProfile() =>
             PoCisdEvent ev = poCisdEvents.get(ci)
             bool invalid = not na(ev.invalidatedBar)
             bool recent = ev.startBar <= bar_index and bar_index - ev.startBar <= 4800
-            bool contextPass = poCisdViewFilter == "All" or
-                 (poCisdViewFilter == "C2-associated" and ev.c2Linked) or
-                 (poCisdViewFilter == "Killzones" and ev.inKillzone) or
-                 (poCisdViewFilter == "C2-associated + Killzones" and ev.c2Linked and ev.inKillzone)
-            if shown < poCisdDrawKeep and recent and contextPass and (not invalid or poCisdShowInvalid)
+            bool contextPass = poCisdBaselineContextPass(ev)
+            bool structuralPass = poCisdStructuralPass(ev)
+            if shown < poCisdDrawKeep and recent and contextPass and structuralPass and (not invalid or poCisdShowInvalid)
                 color base = ev.bull ? poCisdBull : poCisdBear
                 color tint = invalid ? color.new(base, 78) : ev.c2Linked ? base : color.new(base, 30)
                 poLineI(ev.startBar, ev.level, ev.confirmBar + 3, ev.level, tint, line.style_solid, ev.c2Linked ? 3 : 1)
@@ -2554,6 +2585,51 @@ poRenderProfile() =>
 
     0
 
+// Counts describe the capped retained registry (not a backtest or complete signal census).
+// 'Eligible' uses the identical draw predicates, BEFORE the draw cap.
+poUpdateCisdQualCounts() =>
+    int retained = poCisdEvents.size()
+    int linked = 0
+    int swept = 0
+    int alreadyClosed = 0
+    int displaced = 0
+    int knownFvg = 0
+    int eligible = 0
+    if retained > 0
+        for ci = 0 to retained - 1
+            PoCisdEvent ev = poCisdEvents.get(ci)
+            linked += ev.c2Linked ? 1 : 0
+            swept += ev.c2SweepAtConfirm ? 1 : 0
+            alreadyClosed += ev.c2QualifiedAtConfirm ? 1 : 0
+            displaced += poCisdDispPass(ev) ? 1 : 0
+            knownFvg += not na(ev.alignedFvgAtConfirmBar) ? 1 : 0
+            bool recent = ev.startBar <= bar_index and bar_index - ev.startBar <= 4800
+            bool visible = recent and poCisdBaselineContextPass(ev) and poCisdStructuralPass(ev) and
+             (na(ev.invalidatedBar) or poCisdShowInvalid)
+            eligible += visible ? 1 : 0
+    int drawn = math.min(eligible, poCisdDrawKeep)
+    color tc = color.white
+    color dim = color.silver
+    table.cell(poCisdQualPanel, 0, 0, "CISD research (retained)", text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 0, str.tostring(retained), text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 0, 1, "C2 linked", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 1, str.tostring(linked), text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 0, 2, "C1 swept at CISD", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 2, str.tostring(swept), text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 0, 3, "C2 closed at CISD", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 3, str.tostring(alreadyClosed), text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 0, 4, "Displacement passing", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 4, str.tostring(displaced), text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 0, 5, "Aligned FVG known", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 5, str.tostring(knownFvg), text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 0, 6, "Eligible (combined)", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 6, str.tostring(eligible), text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 0, 7, "Drawn (cap)", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 7, str.tostring(drawn), text_color = tc, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 0, 8, "Body% / ATR / close%", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdQualPanel, 1, 8, str.tostring(poCisdQualBodyPct, "#") + "/" + str.tostring(poCisdQualAtr, "#.0") + "/" + str.tostring(poCisdQualClosePct, "#"), text_color = tc, text_size = size.tiny)
+    0
+
 poRenderSmt() =>
     if po3ShowSmt and poSmtChart and poSmtMarks.size() > 0
         int nm = poSmtMarks.size()
@@ -2591,5 +2667,7 @@ if barstate.islast and bandzModulePo3
     poRenderLevels(poLay)
     poRenderProfile()
     poRenderSmt()
+    if poCisdQualStats and po3ShowCisd and poCisdScope == "All + C2 highlighted"
+        poUpdateCisdQualCounts()
     if po3ShowTable
         poUpdateMinimal()
