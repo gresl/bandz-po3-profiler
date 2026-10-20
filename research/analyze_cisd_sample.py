@@ -87,6 +87,9 @@ def displacement(row):
 def memberships(row):
     c2 = flag(row.get("c2_linked_then"))
     fvg = flag(row.get("aligned_fvg_known_then"))
+    # A claimed known FVG without its formation timestamp is unverified evidence.
+    if fvg is True and not (row.get("aligned_fvg_born_time_then") or "").strip():
+        fvg = None
     disp = displacement(row)
     return {
         "raw": True,
