@@ -57,6 +57,12 @@ class PhaseCAnalysisTests(unittest.TestCase):
         self.assertEqual(groups["raw"]["membership"]["pass"], 1)
         self.assertEqual(groups["aligned_fvg"]["membership"]["unknown"], 1)
         self.assertEqual(groups["c2_displacement_fvg"]["membership"]["unknown"], 1)
+        # A checked YES without a formation timestamp is still unverified.
+        missing_timestamp = analyze([row(aligned_fvg_known_then="yes")])
+        self.assertEqual(missing_timestamp["cohorts"][0]["groups"]["aligned_fvg"]["membership"]["unknown"], 1)
+        evidenced = analyze([row(aligned_fvg_known_then="yes",
+                                 aligned_fvg_born_time_then="2026-01-01T09:00:00-05:00")])
+        self.assertEqual(evidenced["cohorts"][0]["groups"]["aligned_fvg"]["membership"]["pass"], 1)
 
     def test_overlapping_cohorts_and_blinded_comparison(self):
         good = row(aligned_fvg_known_then="yes")
