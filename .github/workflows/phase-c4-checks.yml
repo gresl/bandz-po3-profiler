@@ -1,0 +1,30 @@
+name: Phase C research checks
+
+on:
+  push:
+    branches:
+      - feature/cisd-v1.4-phase-c-c4-analysis
+  pull_request:
+    paths:
+      - "research/**"
+      - ".github/workflows/phase-c4-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  phase-c-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile research tools
+        run: python3 -m py_compile research/validate_cisd_sample.py research/analyze_cisd_sample.py research/tests/test_cisd_analysis.py
+      - name: Synthetic research tests
+        run: python3 -m unittest discover -s research/tests -v
+      - name: Validate and analyze empty canonical manifest
+        run: |
+          python3 research/validate_cisd_sample.py
+          python3 research/analyze_cisd_sample.py --json /tmp/phase-c4-empty.json
