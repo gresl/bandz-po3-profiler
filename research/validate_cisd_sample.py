@@ -2,6 +2,7 @@
 """Validate Phase C CISD research rows; stdlib only; never fills missing evidence."""
 import argparse
 import csv
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -58,10 +59,9 @@ def check(path: Path):
         identity = tuple(r[k] for k in KEY_FIELDS)
         if any(not value for value in identity):
             errors.append(f"{tag}: missing immutable identity fields")
-        compound = (r["event_key"], identity)
-        if compound in seen:
-            errors.append(f"{tag}: duplicate event key + identity")
-        seen.add(compound)
+        if r["event_key"] in seen:
+            errors.append(f"{tag}: duplicate event_key")
+        seen.add(r["event_key"])
         if r["direction"].lower() not in {"bull", "bear", "bullish", "bearish"}:
             errors.append(f"{tag}: unexpected direction")
         label = r["technical_review_label"].lower()
@@ -79,7 +79,10 @@ def check(path: Path):
             value = r[col]
             if value and value.lower() not in {"unknown", "n/a", "na", "not_evaluable"}:
                 try:
-                    float(value)
+                    if not math.isfinite(float(value)):
+                        errors.append(f"{tag}: {col} is not finite")
+                    elif col.startswith(("mfe_atr_", "mae_atr_")) and float(value) < 0:
+                        errors.append(f"{tag}: {col} cannot be negative")
                 except ValueError:
                     errors.append(f"{tag}: {col} is not numeric")
         for horizon, fields in FINAL_FIELDS.items():
