@@ -163,6 +163,8 @@ string poCisdAuditMode = input.string("Newest offset", "Research: audit selectio
 string poCisdAuditFixedClose = input.string("", "Research: fixed CISD close NY", tooltip = "Exact America/New_York confirmation-close time, format YYYY-MM-DD HH:mm (for example 2026-10-16 10:00). Not the opening timestamp. If absent or ambiguous, the audit displays a warning.", group = PO_G8B)
 // Phase C outcomes are retrospective measurements only. They are never eligible-at-close inputs.
 bool   poCisdOutcomeOn = input.bool(false, "Research: later 16/32-bar outcomes", tooltip = "Requires the event-time audit panel for display. Uses only subsequent CLOSED chart candles, with the CISD confirmation close and ATR14 frozen as reference. No entries or alerts.", group = PO_G8B)
+// Phase C6 diagnostic; no trading-signal or structural-filter changes.
+bool   poCisdParityAudit = input.bool(false, "Research: raw CISD / structural parity details", tooltip = "Adds six audit rows: candle OPEN and confirmed CLOSE time, delivery-open levels, and the last opposing candle. Opposing-candle reference is NOT a validated propulsion block.", group = PO_G8B)
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -664,6 +666,15 @@ type PoCisdEvent
     float level
     int   confirmBar
     int   confirmTime
+    // C6 immutable raw-CISD timing and opposing-candle evidence.
+    int   confirmOpenTime
+    float confirmClosePrice
+    float firstOpposingOpen
+    int   lastOpposingBar
+    int   lastOpposingTime
+    float lastOpposingOpen
+    float lastOpposingHigh
+    float lastOpposingLow
     bool  c2Linked
     int   c2StartTime
     bool  inKillzone
@@ -1619,6 +1630,23 @@ if poCalc and barstate.isconfirmed
             added.level := ncEvent.level
             added.confirmBar := ncEvent.confirmBar
             added.confirmTime := closedAt
+            // Capture raw delivery-break evidence at the actual confirmed bar,
+            // BEFORE any later price action. The selected level remains ncEvent.level.
+            added.confirmOpenTime := time
+            added.confirmClosePrice := close
+            int originOffset = bar_index - ncEvent.startBar
+            added.firstOpposingOpen := originOffset >= 0 and originOffset <= 60 ? open[originOffset] : na
+            // An opposing candle is an OB *reference*, not a Propulsion Block.
+            // A PB also needs an earlier qualifying OB, a revisit and subsequent displacement.
+            for bo = 1 to 60
+                if bo <= originOffset and na(added.lastOpposingBar)
+                    bool opposite = ncEvent.bull ? close[bo] < open[bo] : close[bo] > open[bo]
+                    if opposite
+                        added.lastOpposingBar := bar_index - bo
+                        added.lastOpposingTime := time[bo]
+                        added.lastOpposingOpen := open[bo]
+                        added.lastOpposingHigh := high[bo]
+                        added.lastOpposingLow := low[bo]
             added.c2Linked := linked
             added.c2StartTime := c2OriginTime
             added.inKillzone := poCisdInKillzone
@@ -2075,7 +2103,7 @@ color poNoBorder = color.new(color.white, 100)
 var table poHdr = table.new(position.top_center, 1, 2)
 var table poPnl = poChecklist ? table.new(position.middle_right, 2, 7) : na
 var table poCisdQualPanel = poCisdQualStats ? table.new(position.bottom_left, 2, 9, bgcolor = color.new(color.black, 16)) : na
-var table poCisdAuditPanel = poCisdAuditOn and po3ShowCisd and poCisdScope == "All + C2 highlighted" ? table.new(position.bottom_right, 2, poCisdOutcomeOn ? 26 : 20, bgcolor = color.new(color.black, 16)) : na
+var table poCisdAuditPanel = poCisdAuditOn and po3ShowCisd and poCisdScope == "All + C2 highlighted" ? table.new(position.bottom_right, 2, (poCisdOutcomeOn ? 26 : 20) + (poCisdParityAudit ? 6 : 0), bgcolor = color.new(color.black, 16)) : na
 
 poClearAll() =>
     while poBoxes.size() > 0
@@ -2747,7 +2775,7 @@ poUpdateCisdAudit() =>
     table.cell(poCisdAuditPanel, 0, 0, "CISD EVENT-TIME AUDIT", text_color = tc, text_size = size.tiny)
     table.cell(poCisdAuditPanel, 1, 0, (fixedMode ? "Fixed NY " + poCisdAuditFixedClose : "Offset " + str.tostring(poCisdAuditOffset)) + " / retained " + str.tostring(retained), text_color = tc, text_size = size.tiny)
     if selected < 0
-        table.clear(poCisdAuditPanel, 0, 1, 1, poCisdOutcomeOn ? 25 : 19)
+        table.clear(poCisdAuditPanel, 0, 1, 1, (poCisdOutcomeOn ? 25 : 19) + (poCisdParityAudit ? 6 : 0))
         table.cell(poCisdAuditPanel, 0, 1, fixedMode ? "FIXED EVENT NOT SELECTED" : "No confirmed CISD events", text_color = color.orange, text_size = size.tiny)
         string reason = not fixedMode ? "Await next close" : str.length(poCisdAuditFixedClose) == 0 ? "Enter YYYY-MM-DD HH:mm (NY)" : matchCount > 1 ? "AMBIGUOUS: multiple events same NY minute" : retained == 0 ? "No retained events yet" : "NOT FOUND in retained history"
         table.cell(poCisdAuditPanel, 1, 1, reason, text_color = color.orange, text_size = size.tiny)
@@ -2826,6 +2854,30 @@ poUpdateCisdAudit() =>
             table.cell(poCisdAuditPanel, 1, 24, atrOk and not na(mfe32) ? str.tostring(mfe32, "#.00") + " / " + str.tostring(mae32, "#.00") : "n/a", text_color = tc, text_size = size.tiny)
             table.cell(poCisdAuditPanel, 0, 25, "C 32: terminal ATR / first-hit", text_color = dim, text_size = size.tiny)
             table.cell(poCisdAuditPanel, 1, 25, (na(terminal32) ? "not final" : str.tostring(terminal32, "#.00")) + " / " + (atrOk ? poCisdOutcomeFirstHit(ev.outcomeFirstFavBar, ev.outcomeFirstAdvBar, 32, ev.outcomeBarsSeen) : "N/A ATR"), text_color = tc, text_size = size.tiny)
+        // C6 event-time parity rows are opt-in. No historical lookup of the
+        // confirmation candle or its parent OB occurs during rendering.
+        if poCisdParityAudit
+            int pr = poCisdOutcomeOn ? 26 : 20
+            string openNy = na(ev.confirmOpenTime) ? "n/a" : str.format_time(ev.confirmOpenTime, "yyyy-MM-dd HH:mm", "America/New_York")
+            string closeNy = str.format_time(ev.confirmTime, "yyyy-MM-dd HH:mm", "America/New_York")
+            string firstOpen = na(ev.firstOpposingOpen) ? "n/a" : str.tostring(ev.firstOpposingOpen, format.mintick)
+            string lastOpen = na(ev.lastOpposingOpen) ? "n/a" : str.tostring(ev.lastOpposingOpen, format.mintick)
+            string lastOppNy = na(ev.lastOpposingTime) ? "none" : str.format_time(ev.lastOpposingTime, "yyyy-MM-dd HH:mm", "America/New_York")
+            string lastRange = na(ev.lastOpposingHigh) or na(ev.lastOpposingLow) ? "none" : str.tostring(ev.lastOpposingHigh, format.mintick) + " / " + str.tostring(ev.lastOpposingLow, format.mintick)
+            float breachTicks = (ev.bull ? ev.confirmClosePrice - ev.level : ev.level - ev.confirmClosePrice) / syminfo.mintick
+            string gate = not ev.auditCaptured ? "NOT CAPTURED" : ev.auditCombinedPass ? "QUALIFIED (configured gates)" : "REJECTED (configured gates)"
+            table.cell(poCisdAuditPanel, 0, pr, "C6 RAW: candle OPEN NY", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, pr, openNy, text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, pr + 1, "C6 RAW: confirmed CLOSE NY", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, pr + 1, closeNy, text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, pr + 2, "C6 RAW: break close / ticks", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, pr + 2, str.tostring(ev.confirmClosePrice, format.mintick) + " / +" + str.tostring(breachTicks, "#.0"), text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, pr + 3, "C6 OB ref: first / last opens", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, pr + 3, firstOpen + " / " + lastOpen + " | level " + str.tostring(ev.level, format.mintick), text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, pr + 4, "C6 OB ref: last opposing NY", text_color = dim, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, pr + 4, lastOppNy + " | hi/lo " + lastRange + " (NOT PB)", text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 0, pr + 5, "C6 RAW vs STRUCTURAL", text_color = tc, text_size = size.tiny)
+            table.cell(poCisdAuditPanel, 1, pr + 5, "RAW confirmed | " + gate, text_color = ev.auditCaptured and ev.auditCombinedPass ? color.lime : color.orange, text_size = size.tiny)
     0
 
 poRenderSmt() =>
