@@ -159,6 +159,8 @@ bool   poCisdQualStats = input.bool(false, "Structural: show filter counts", too
 // v1.4 event-time audit: inspect one immutable confirmation decision; no signal or draw changes.
 bool   poCisdAuditOn = input.bool(false, "Research: event-time audit panel", tooltip = "Bottom-right: frozen decision at the original CISD close versus later outcomes. Research mode only.", group = PO_G8B)
 int    poCisdAuditOffset = input.int(0, "Research: audit newest-event offset", minval = 0, maxval = 19, tooltip = "0 = newest retained confirmed CISD, 1 = previous, etc. Clamped when fewer events exist.", group = PO_G8B)
+string poCisdAuditMode = input.string("Newest offset", "Research: audit selection mode", options = ["Newest offset", "Fixed NY close"], tooltip = "Newest offset follows new CISDs. Fixed NY close keeps one confirmation event selected across Replay; it never silently falls back to another event.", group = PO_G8B)
+string poCisdAuditFixedClose = input.string("", "Research: fixed CISD close NY", tooltip = "Exact America/New_York confirmation-close time, format YYYY-MM-DD HH:mm (for example 2026-10-16 10:00). Not the opening timestamp. If absent or ambiguous, the audit displays a warning.", group = PO_G8B)
 // Phase C outcomes are retrospective measurements only. They are never eligible-at-close inputs.
 bool   poCisdOutcomeOn = input.bool(false, "Research: later 16/32-bar outcomes", tooltip = "Requires the event-time audit panel for display. Uses only subsequent CLOSED chart candles, with the CISD confirmation close and ATR14 frozen as reference. No entries or alerts.", group = PO_G8B)
 bool   poStdvOn        = po3ShowStdv
@@ -2727,13 +2729,29 @@ poUpdateCisdAudit() =>
     color tc = color.white
     color dim = color.silver
     int retained = poCisdEvents.size()
+    bool fixedMode = poCisdAuditMode == "Fixed NY close"
+    int selected = -1
+    int matchCount = 0
+    if retained > 0
+        if fixedMode
+            if str.length(poCisdAuditFixedClose) > 0
+                for ei = 0 to retained - 1
+                    PoCisdEvent candidate = poCisdEvents.get(ei)
+                    if str.format_time(candidate.confirmTime, "yyyy-MM-dd HH:mm", "America/New_York") == poCisdAuditFixedClose
+                        selected := ei
+                        matchCount += 1
+            if matchCount != 1
+                selected := -1
+        else
+            selected := retained - 1 - math.min(poCisdAuditOffset, retained - 1)
     table.cell(poCisdAuditPanel, 0, 0, "CISD EVENT-TIME AUDIT", text_color = tc, text_size = size.tiny)
-    table.cell(poCisdAuditPanel, 1, 0, "Offset " + str.tostring(poCisdAuditOffset) + " / retained " + str.tostring(retained), text_color = tc, text_size = size.tiny)
-    if retained == 0
-        table.cell(poCisdAuditPanel, 0, 1, "No confirmed CISD events", text_color = dim, text_size = size.tiny)
-        table.cell(poCisdAuditPanel, 1, 1, "Await next close", text_color = dim, text_size = size.tiny)
+    table.cell(poCisdAuditPanel, 1, 0, (fixedMode ? "Fixed NY " + poCisdAuditFixedClose : "Offset " + str.tostring(poCisdAuditOffset)) + " / retained " + str.tostring(retained), text_color = tc, text_size = size.tiny)
+    if selected < 0
+        table.clear(poCisdAuditPanel, 0, 1, 1, poCisdOutcomeOn ? 25 : 19)
+        table.cell(poCisdAuditPanel, 0, 1, fixedMode ? "FIXED EVENT NOT SELECTED" : "No confirmed CISD events", text_color = color.orange, text_size = size.tiny)
+        string reason = not fixedMode ? "Await next close" : str.length(poCisdAuditFixedClose) == 0 ? "Enter YYYY-MM-DD HH:mm (NY)" : matchCount > 1 ? "AMBIGUOUS: multiple events same NY minute" : retained == 0 ? "No retained events yet" : "NOT FOUND in retained history"
+        table.cell(poCisdAuditPanel, 1, 1, reason, text_color = color.orange, text_size = size.tiny)
     else
-        int selected = retained - 1 - math.min(poCisdAuditOffset, retained - 1)
         PoCisdEvent ev = poCisdEvents.get(selected)
         string ts = str.format_time(ev.confirmTime, "yyyy-MM-dd HH:mm", poTz)
         string c2Ts = na(ev.c2StartTime) ? "none" : str.format_time(ev.c2StartTime, "MM-dd HH:mm", poTz)
