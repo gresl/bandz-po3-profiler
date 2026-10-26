@@ -96,3 +96,19 @@ Pair B (capture 16:24):
 **Qualifications:** exact open/close times inferred from 15m x-axis and assumed bar-close replay; not verified in Data Window. Do not infer no-repaint/live-bar safety or PB semantic parity from static screenshots. Faint dotted markers are visible before solid-line confirmation, so do not conflate precursor creation with confirmed event.
 
 **Next:** test stability of *lower* solid line by same-endpoint indicator OFF/ON, without advancing replay; capture both after restoration. Then record the exact candle close timestamp / red price using crosshair or TradingView Data Window and seek an actual PB-labelled example or independently specified PB rules before PB-engine implementation.
+
+## Oct 26, 16:38–16:39 UTC-4 — lower-level same-endpoint OFF/ON stability
+
+Screenshots from repeated indicator OFF/ON/OFF/ON test at unchanged Oct 22 15m replay endpoint (latest visible bar appears to open ~03:30 NY):
+- `image(20261026-203858).png` — indicators hidden, clean candles.
+- `image(20261026-203907).png` — indicators hidden again at the same apparent endpoint.
+- `image(20261026-203917).png` — Po3 Ultimate+ restored; lower solid red bearish line ~1.1238 and prior upper line ~1.1242 visible.
+- `image(20261026-203923).png` — standalone CISD [base] restored; lower solid red bearish line ~1.1238 and prior upper line ~1.1242 visible.
+
+Trader reports repeating OFF/ON/OFF/ON without price progression. The lower solid line returns at the same chart position, with no observable difference between source indicators to screenshot precision.
+
+**Result: PASS — historical-recalculation stability of the lower solid red level at a fixed replay endpoint.** With both the earlier adjacent-bar before/after confirmation and this redraw check, close the Oct 22 *reference-line visibility and fixed-endpoint stability* test.
+
+**Not established:** exact numerical line price (approximation from chart only), exact candle-close time (inferred), real-time non-repainting, underlying internal event type, or that the second/lower red line specifically represents PB. It occurs in CISD [base] too; do not silently treat paired lines as CISD+PB labels.
+
+**Next research:** record exact event price/time from Data Window or crosshair if obtainable, and collect a PB-positive observation with an explicit PB-labelled reference / documented rule; compare PB classification separately from generic CISD reference-line painting. No Pine rule changes justified yet.
