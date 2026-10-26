@@ -1,0 +1,205 @@
+//@version=6
+// CRT Fractal + CISD/PB — independent experimental research prototype, v0.1.
+// Uses original implementation of publicly described ideas; it is NOT Cephxs source.
+// Close-confirmed observations ONLY. No trading signals, execution or alerts.
+indicator("CRT 1/5/9 Fractal CISD + PB [research v0.1]", overlay = true, max_lines_count = 300, max_labels_count = 300)
+
+// --- Research controls ---
+string G1 = "1 · CRT 15m → 4H"
+string nyTZ = "America/New_York"
+string crtBoundary = input.string("All NY 4H closes", "C2 completion window", options = ["All NY 4H closes", "01/05/09 NY closes"], group = G1, tooltip = "NY 4H candles are anchored at 01,05,09,13,17,21. Optional restriction concerns C2 confirmation CLOSE time.")
+bool showC2 = input.bool(true, "Show closed C2 sweeps", group = G1)
+int c2Bars = input.int(32, "Closed-bar C2 association window", minval = 1, maxval = 64, group = G1)
+bool requireC2 = input.bool(false, "Draw only C2-associated CISD", group = G1, tooltip = "Experimental presentation gate. Raw CISD detection is unchanged.")
+
+string G2 = "2 · CISD (independent research detector)"
+int minRun = input.int(2, "Minimum opposing delivery run", minval = 1, maxval = 8, group = G2)
+int maxPending = input.int(10, "Pending CISD timeout (bars)", minval = 1, maxval = 30, group = G2)
+bool drawCisd = input.bool(true, "Show confirmed CISD", group = G2)
+int keepDrawings = input.int(65, "Recent annotations retained", minval = 5, maxval = 120, group = G2)
+bool verboseLabels = input.bool(true, "Show frozen close-time labels", group = G2)
+
+string G3 = "3 · PB continuation HYPOTHESIS"
+bool showPb = input.bool(true, "Differentiate same-direction parent-zone PB candidates", group = G3, tooltip = "Thin line means RESEARCH candidate matching the public Cephxs PB description, NOT source-identical validated PB.")
+bool requireParentHold = input.bool(true, "Require prior CISD extreme to hold on close", group = G3)
+bool showMid = input.bool(false, "Draw PB candidate body midpoint (diagnostic)", group = G3)
+
+// 15-minute normal candles are required. Do not infer a 4H candle from an unfinished period.
+bool validChart = timeframe.isminutes and timeframe.multiplier == 15 and chart.is_standard
+int nyHour = hour(time, nyTZ)
+int nyMinute = minute(time, nyTZ)
+int nyCloseHour = hour(time_close, nyTZ)
+int nyCloseMinute = minute(time_close, nyTZ)
+bool begins4H = nyMinute == 0 and (nyHour == 1 or nyHour == 5 or nyHour == 9 or nyHour == 13 or nyHour == 17 or nyHour == 21)
+bool finishes4H = nyCloseMinute == 0 and (nyCloseHour == 1 or nyCloseHour == 5 or nyCloseHour == 9 or nyCloseHour == 13 or nyCloseHour == 17 or nyCloseHour == 21)
+bool crtAllowed = crtBoundary == "All NY 4H closes" or nyCloseHour == 1 or nyCloseHour == 5 or nyCloseHour == 9
+
+// --- Causal NY-aligned 4H candle builder (no request.security or lookahead) ---
+var float hOpen = na
+var float hHigh = na
+var float hLow = na
+var float hClose = na
+var bool hAligned = false
+var float prevHHigh = na
+var float prevHLow = na
+var int c2Direction = 0
+var int c2DetectedBar = na
+var int c2DetectedClose = na
+
+// --- Last continuous up/down candle runs, with their true wick extremes ---
+var int runDirection = 0
+var int runLength = 0
+var int runFirstBar = na
+var float runFirstOpen = na
+var float runHigh = na
+var float runLow = na
+
+// --- One pending direction at a time. These are provisional, not confirmations. ---
+var float pendBullLevel = na
+var float pendBullExtreme = na
+var int pendBullStart = na
+var int pendBullArmed = na
+var float pendBearLevel = na
+var float pendBearExtreme = na
+var int pendBearStart = na
+var int pendBearArmed = na
+
+// --- Frozen last REGULAR CISD zones in each direction (not OBs). ---
+var float parentBullLevel = na
+var float parentBullExtreme = na
+var int parentBullAt = na
+var bool parentBullAlive = false
+var float parentBearLevel = na
+var float parentBearExtreme = na
+var int parentBearAt = na
+var bool parentBearAlive = false
+var array<line> drawnLines = array.new<line>()
+var array<label> drawnLabels = array.new<label>()
+
+// Exactly one closed candle produces state changes.
+if barstate.isconfirmed and validChart
+    // New 4H segment starts with its first 15m bar. Only fully observed 4H
+    // segments are allowed to become C1/C2 comparisons.
+    if na(hOpen) or begins4H
+        hOpen := open
+        hHigh := high
+        hLow := low
+        hClose := close
+        hAligned := begins4H
+    else
+        hHigh := math.max(hHigh, high)
+        hLow := math.min(hLow, low)
+        hClose := close
+
+    if finishes4H and hAligned
+        bool bullSweep = not na(prevHLow) and hLow < prevHLow and hClose > prevHLow and hClose <= prevHHigh
+        bool bearSweep = not na(prevHHigh) and hHigh > prevHHigh and hClose < prevHHigh and hClose >= prevHLow
+        if crtAllowed and bullSweep != bearSweep
+            c2Direction := bullSweep ? 1 : -1
+            c2DetectedBar := bar_index
+            c2DetectedClose := time_close
+            if showC2
+                string side = bullSweep ? "BULL C2" : "BEAR C2"
+                string stamp = str.format_time(time_close, "MM-dd HH:mm", nyTZ)
+                float y = bullSweep ? hLow : hHigh
+                label lb = label.new(bar_index, y, side + "\n" + stamp + " NY", color = color.new(color.gray, 85), textcolor = bullSweep ? color.blue : color.red, style = bullSweep ? label.style_label_up : label.style_label_down, size = size.tiny)
+                array.push(drawnLabels, lb)
+        prevHHigh := hHigh
+        prevHLow := hLow
+
+    // Expire rather than retrospectively change the original C2 timestamp.
+    if not na(c2DetectedBar) and bar_index - c2DetectedBar > c2Bars
+        c2Direction := 0
+
+    // Prior parent CISD zones are invalidated only by a later CLOSE beyond
+    // their reversal extremes; archived observations remain frozen.
+    if parentBullAlive and close < parentBullExtreme
+        parentBullAlive := false
+    if parentBearAlive and close > parentBearExtreme
+        parentBearAlive := false
+
+    int candleDirection = close > open ? 1 : close < open ? -1 : 0
+    if candleDirection != 0
+        if runDirection == candleDirection
+            runLength += 1
+            runHigh := math.max(runHigh, high)
+            runLow := math.min(runLow, low)
+        else
+            // A finished down run can arm a bullish CISD, and vice versa.
+            if runDirection == -1 and runLength >= minRun
+                pendBullLevel := runFirstOpen
+                pendBullExtreme := runLow
+                pendBullStart := runFirstBar
+                pendBullArmed := bar_index
+            if runDirection == 1 and runLength >= minRun
+                pendBearLevel := runFirstOpen
+                pendBearExtreme := runHigh
+                pendBearStart := runFirstBar
+                pendBearArmed := bar_index
+            runDirection := candleDirection
+            runLength := 1
+            runFirstBar := bar_index
+            runFirstOpen := open
+            runHigh := high
+            runLow := low
+
+    // Confirmations are at the BREAKING bar's CLOSE, never at the swing.
+    bool bullConfirmed = not na(pendBullArmed) and bar_index - pendBullArmed <= maxPending and close > pendBullLevel
+    bool bearConfirmed = not na(pendBearArmed) and bar_index - pendBearArmed <= maxPending and close < pendBearLevel
+    if not na(pendBullArmed) and bar_index - pendBullArmed > maxPending
+        pendBullArmed := na
+    if not na(pendBearArmed) and bar_index - pendBearArmed > maxPending
+        pendBearArmed := na
+
+    if bullConfirmed
+        bool c2Linked = c2Direction == 1 and not na(c2DetectedBar) and bar_index - c2DetectedBar <= c2Bars
+        // Candidate Cephxs-style continuation test: the NEW reversal low
+        // entered and held inside an earlier active bullish CISD zone.
+        bool insideParent = parentBullAlive and not na(parentBullAt) and parentBullAt < pendBullStart and pendBullExtreme >= parentBullExtreme and pendBullExtreme <= parentBullLevel
+        bool pbResearch = showPb and insideParent and (not requireParentHold or close >= parentBullExtreme)
+        if drawCisd and (not requireC2 or c2Linked)
+            line ln = line.new(pendBullStart, pendBullLevel, bar_index, pendBullLevel, color = color.blue, width = pbResearch ? 1 : 3)
+            array.push(drawnLines, ln)
+            if verboseLabels
+                string msg = (pbResearch ? "PB? BULL" : "CISD BULL") + (c2Linked ? " / C2" : " / no C2") + "\nconfirmed " + str.format_time(time_close, "MM-dd HH:mm", nyTZ) + " NY"
+                label lb = label.new(bar_index, pendBullLevel, msg, style = label.style_label_up, color = color.new(color.blue, 85), textcolor = color.blue, size = size.tiny)
+                array.push(drawnLabels, lb)
+            if pbResearch and showMid
+                line ml = line.new(pendBullStart, (open + close) / 2.0, bar_index, (open + close) / 2.0, color = color.new(color.blue, 55), style = line.style_dotted)
+                array.push(drawnLines, ml)
+        if not pbResearch
+            parentBullLevel := pendBullLevel
+            parentBullExtreme := pendBullExtreme
+            parentBullAt := bar_index
+            parentBullAlive := true
+        pendBullArmed := na
+
+    if bearConfirmed
+        bool c2Linked = c2Direction == -1 and not na(c2DetectedBar) and bar_index - c2DetectedBar <= c2Bars
+        bool insideParent = parentBearAlive and not na(parentBearAt) and parentBearAt < pendBearStart and pendBearExtreme <= parentBearExtreme and pendBearExtreme >= parentBearLevel
+        bool pbResearch = showPb and insideParent and (not requireParentHold or close <= parentBearExtreme)
+        if drawCisd and (not requireC2 or c2Linked)
+            line ln = line.new(pendBearStart, pendBearLevel, bar_index, pendBearLevel, color = color.red, width = pbResearch ? 1 : 3)
+            array.push(drawnLines, ln)
+            if verboseLabels
+                string msg = (pbResearch ? "PB? BEAR" : "CISD BEAR") + (c2Linked ? " / C2" : " / no C2") + "\nconfirmed " + str.format_time(time_close, "MM-dd HH:mm", nyTZ) + " NY"
+                label lb = label.new(bar_index, pendBearLevel, msg, style = label.style_label_down, color = color.new(color.red, 85), textcolor = color.red, size = size.tiny)
+                array.push(drawnLabels, lb)
+            if pbResearch and showMid
+                line ml = line.new(pendBearStart, (open + close) / 2.0, bar_index, (open + close) / 2.0, color = color.new(color.red, 55), style = line.style_dotted)
+                array.push(drawnLines, ml)
+        if not pbResearch
+            parentBearLevel := pendBearLevel
+            parentBearExtreme := pendBearExtreme
+            parentBearAt := bar_index
+            parentBearAlive := true
+        pendBearArmed := na
+
+    // Pine drawing objects are bounded; observations are append-only until eviction.
+    while array.size(drawnLines) > keepDrawings
+        line.delete(array.shift(drawnLines))
+    while array.size(drawnLabels) > keepDrawings
+        label.delete(array.shift(drawnLabels))
+
+// Visible chart validation (no future data or trade automation).
+bgcolor(not validChart ? color.new(color.orange, 90) : na, title = "15m standard candle requirement")
