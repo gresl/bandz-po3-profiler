@@ -44,3 +44,17 @@ Trader reports repeated OFF/ON/OFF/ON of both indicators without changing replay
 **Scope limitation:** Does not establish the event's first knowable candle close, no future-data/repainting globally, specific PB-positive classification, or equality of underlying engine implementation. The lower PB-candidate line seen in later-Oct-22 screenshots is not yet proven to exist at this endpoint; do not use this pass to claim PB parity. Exact level from Data Window/crosshair remains unrecorded.
 
 **Next controlled action:** replay forward one 15m candle at a time from before appearance of the candidate *second/lower* bearish mark and record first signal appearance (chart bar *open* label versus actual signal-confirmation *close*), whether that line represents PB in Ultimate+ and CISD [base], and its exact level. Record both snapshots at the same close and repeat a same-endpoint toggle for the candidate line.
+
+## Oct 26, 16:17 UTC-4 — Oct 22 dual-line same-endpoint comparison
+
+New matched screenshots:
+- `image(20261026-201707).png` — Po3 Ultimate+.
+- `image(20261026-201715).png` — standalone CISD [base].
+
+Both show an earlier upper red bearish line approximately 1.1242, plus a subsequent paler/lower red bearish line approximately 1.1238. The latter is drawn from the vicinity of the Oct 22 03:00 NY bar, with the newest visible large bearish bar at approximately 03:15 NY (chart bars are labelled by opening time). Both indicators depict the lower line at the same approximate level and anchor; pixel evidence only, exact quote and timing still to be crosshair-verified.
+
+**Result: PASS — paired upper and lower red-level visual agreement at this later replay endpoint.**
+
+**Unresolved:** the screenshot does not show the immediately preceding replay endpoint, so first *observability* and confirm close are not known; a historically drawn line can be anchored before first visibility. The fact that CISD [base] also draws the lower level prevents inferring that the lower mark is PB-specific. No same-endpoint OFF/ON for the *lower* line is included here. Therefore the PB-positive tag remains a hypothesis, not accepted ground truth.
+
+**Next test:** capture one step before the lower line first becomes visible and the first step showing it; record exact time, date, open-labelled bar vs closing time, source-indicator visibility, line color/weight and exact red level. Then optional lower-line toggle at that identical endpoint. Avoid tuning PB rules from these screenshots alone.
