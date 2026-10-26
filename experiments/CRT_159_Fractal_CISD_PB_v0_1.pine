@@ -57,10 +57,12 @@ var float runLow = na
 // --- One pending direction at a time. These are provisional, not confirmations. ---
 var float pendBullLevel = na
 var float pendBullExtreme = na
+var float pendBullBodyMid = na
 var int pendBullStart = na
 var int pendBullArmed = na
 var float pendBearLevel = na
 var float pendBearExtreme = na
+var float pendBearBodyMid = na
 var int pendBearStart = na
 var int pendBearArmed = na
 
@@ -129,11 +131,13 @@ if barstate.isconfirmed and validChart
             if runDirection == -1 and runLength >= minRun
                 pendBullLevel := runFirstOpen
                 pendBullExtreme := runLow
+                pendBullBodyMid := (open[1] + close[1]) / 2.0
                 pendBullStart := runFirstBar
                 pendBullArmed := bar_index
             if runDirection == 1 and runLength >= minRun
                 pendBearLevel := runFirstOpen
                 pendBearExtreme := runHigh
+                pendBearBodyMid := (open[1] + close[1]) / 2.0
                 pendBearStart := runFirstBar
                 pendBearArmed := bar_index
             runDirection := candleDirection
@@ -165,7 +169,7 @@ if barstate.isconfirmed and validChart
                 label lb = label.new(bar_index, pendBullLevel, msg, style = label.style_label_up, color = color.new(color.blue, 85), textcolor = color.blue, size = size.tiny)
                 array.push(drawnLabels, lb)
             if pbResearch and showMid
-                line ml = line.new(pendBullStart, (open + close) / 2.0, bar_index, (open + close) / 2.0, color = color.new(color.blue, 55), style = line.style_dotted)
+                line ml = line.new(pendBullStart, pendBullBodyMid, bar_index, pendBullBodyMid, color = color.new(color.blue, 55), style = line.style_dotted)
                 array.push(drawnLines, ml)
         if not pbResearch
             parentBullLevel := pendBullLevel
@@ -186,7 +190,7 @@ if barstate.isconfirmed and validChart
                 label lb = label.new(bar_index, pendBearLevel, msg, style = label.style_label_down, color = color.new(color.red, 85), textcolor = color.red, size = size.tiny)
                 array.push(drawnLabels, lb)
             if pbResearch and showMid
-                line ml = line.new(pendBearStart, (open + close) / 2.0, bar_index, (open + close) / 2.0, color = color.new(color.red, 55), style = line.style_dotted)
+                line ml = line.new(pendBearStart, pendBearBodyMid, bar_index, pendBearBodyMid, color = color.new(color.red, 55), style = line.style_dotted)
                 array.push(drawnLines, ml)
         if not pbResearch
             parentBearLevel := pendBearLevel
