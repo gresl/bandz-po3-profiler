@@ -76,3 +76,23 @@ Pair B (capture 16:24):
 **Result:** PASS for matched **solid-line emergence** across adjacent replay bars at screenshot precision; first observed as solid at the 02:30-opening candle / presumed 02:45 close. This tests line visibility timing, **not** the first existence of the faint/red dotted precursor, underlying PB signal semantics, or absence of live-bar flicker. The **lower** ~1.1238 line from the later 16:17 captures has **not** been bracketed by these four screenshots; this is an **upper-line** transition only. Bar timestamps must be validated with crosshair/Data Window if exact close is required.
 
 **Next:** advance 02:45, 03:00 and 03:15 15m bars (or stop when lower ~1.1238 solid reference first appears); save one immediately-before and one first-appearance pair on Ultimate+ and CISD [base], with the same replay endpoints. No rule changes.
+
+## Oct 26, 16:33 UTC-4 — Oct 22 lower bearish line bracketed in adjacent replay bars
+
+**Before (latest visible 15m bar appears to open 03:15 NY; presumed close 03:30):**
+- `image(20261026-203324).png` — Po3 Ultimate+.
+- `image(20261026-203337).png` — CISD [base].
+- Upper solid red horizontal level remains near ~1.1242.
+- The lower level near ~1.1238 is a dotted red precursor, **not yet a solid lower line**.
+
+**After (latest visible 15m bar appears to open 03:30 NY; presumed close 03:45):**
+- `image(20261026-203348).png` — Po3 Ultimate+.
+- `image(20261026-203356).png` — CISD [base].
+- Large bearish bar extends below the lower ~1.1238 reference.
+- A **solid lower red horizontal line** now appears in both, at the same approximate price. Older upper solid level is also visible. Po3 Ultimate+ extends its descending structure line into the new low.
+
+**Result: PASS — before/after lower-line solidification matches between both indicators at screenshot precision.** Combined with earlier 16:23–16:24 upper-line bracket, we now have two distinct level-transition observations in the same Oct 22 bearish sequence: upper confirmed on apparent 02:30-opening bar (~02:45 close); lower confirmed on apparent 03:30-opening bar (~03:45 close). This is sequential *reference-line* agreement, **not confirmation that the second line means PB**. Standalone CISD [base] draws the lower level too.
+
+**Qualifications:** exact open/close times inferred from 15m x-axis and assumed bar-close replay; not verified in Data Window. Do not infer no-repaint/live-bar safety or PB semantic parity from static screenshots. Faint dotted markers are visible before solid-line confirmation, so do not conflate precursor creation with confirmed event.
+
+**Next:** test stability of *lower* solid line by same-endpoint indicator OFF/ON, without advancing replay; capture both after restoration. Then record the exact candle close timestamp / red price using crosshair or TradingView Data Window and seek an actual PB-labelled example or independently specified PB rules before PB-engine implementation.
