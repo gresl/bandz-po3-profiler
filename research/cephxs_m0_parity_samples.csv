@@ -1,0 +1,5 @@
+sample_id,ny_date,window_ny,ticker,chart_tf,phase,indicator,title_version,direction,event_type,origin_open_ny,confirmation_bar_open_ny,confirmation_close_ny,cisd_level,parent_cisd_level,mark_style,first_seen_replay_close_ny,still_visible_plus4,reload_consistent,screenshot_ref,classification,notes
+EU-20261008-BULL,2026-10-08,05:00-11:00,FOREXCOM:EURUSD,15m,M0,cephxs_CISD_base,,BULL,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,,UNSURE,Unverified candidate from prior chart
+EU-20261008-BULL,2026-10-08,05:00-11:00,FOREXCOM:EURUSD,15m,M0,cephxs_Po3_UltimatePlus,,BULL,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,,UNSURE,Unverified candidate from prior chart
+EU-20261022-BEAR,2026-10-22,00:00-08:00,FOREXCOM:EURUSD,15m,M0,cephxs_CISD_base,,BEAR,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,,UNSURE,Unverified candidate from prior chart
+EU-20261022-BEAR,2026-10-22,00:00-08:00,FOREXCOM:EURUSD,15m,M0,cephxs_Po3_UltimatePlus,,BEAR,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,unknown,,UNSURE,Unverified candidate from prior chart
