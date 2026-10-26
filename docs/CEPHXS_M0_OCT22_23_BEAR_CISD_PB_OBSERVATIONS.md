@@ -58,3 +58,21 @@ Both show an earlier upper red bearish line approximately 1.1242, plus a subsequ
 **Unresolved:** the screenshot does not show the immediately preceding replay endpoint, so first *observability* and confirm close are not known; a historically drawn line can be anchored before first visibility. The fact that CISD [base] also draws the lower level prevents inferring that the lower mark is PB-specific. No same-endpoint OFF/ON for the *lower* line is included here. Therefore the PB-positive tag remains a hypothesis, not accepted ground truth.
 
 **Next test:** capture one step before the lower line first becomes visible and the first step showing it; record exact time, date, open-labelled bar vs closing time, source-indicator visibility, line color/weight and exact red level. Then optional lower-line toggle at that identical endpoint. Avoid tuning PB rules from these screenshots alone.
+
+## Oct 26, 16:23–16:24 UTC-4 — Oct 22 adjacent replay bars, upper red-line transition
+
+Pair A (capture 16:23):
+- `image(20261026-202317).png` — Po3 Ultimate+.
+- `image(20261026-202324).png` — CISD [base].
+- Last displayed bar appears to be Oct 22 **02:15 NY bar** (15m opening-time label; presumed close 02:30 NY in bar-close replay).
+- The later continuous horizontal bearish line near ~1.1242 is **not yet solidly drawn** in either. CISD [base] has a *faint red dotted segment* at approximately the same price: do not say there was no candidate/reference visible at all.
+
+Pair B (capture 16:24):
+- `image(20261026-202412).png` — Po3 Ultimate+.
+- `image(20261026-202415).png` — CISD [base].
+- Last displayed bar appears to be Oct 22 **02:30 NY bar** (presumed close 02:45 NY).
+- Both now show a **solid red horizontal level** near ~1.1242, drawn across the preceding green/last bearish candles; last black candle closes below the level.
+
+**Result:** PASS for matched **solid-line emergence** across adjacent replay bars at screenshot precision; first observed as solid at the 02:30-opening candle / presumed 02:45 close. This tests line visibility timing, **not** the first existence of the faint/red dotted precursor, underlying PB signal semantics, or absence of live-bar flicker. The **lower** ~1.1238 line from the later 16:17 captures has **not** been bracketed by these four screenshots; this is an **upper-line** transition only. Bar timestamps must be validated with crosshair/Data Window if exact close is required.
+
+**Next:** advance 02:45, 03:00 and 03:15 15m bars (or stop when lower ~1.1238 solid reference first appears); save one immediately-before and one first-appearance pair on Ultimate+ and CISD [base], with the same replay endpoints. No rule changes.
