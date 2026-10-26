@@ -27,3 +27,20 @@ Capture date: 2026-10-26 15:55–15:58 UTC-4. Instrument: EURUSD, 15m chart, New
 To upgrade Oct 22 to an acceptance candidate: use exact same feed/profile (`15m → 4H` for Ultimate+) and settings, Replay one 15m bar at a time around the initial/lower red line, recording the immediately prior candle, the first candle-close at which each red mark is visible, and one immediate same-endpoint hide/show of both indicators. Note that TradingView bar labels are bar opens; calculate the confirming close separately. Record exact price with crosshair/Data Window. Negative control should be explicitly an ordinary CISD without a thin PB after sufficient follow-through; do not designate Oct 23 negative without checking.
 
 No Bandz code/threshold change recommended from this evidence alone.
+
+## Oct 26, 16:04–16:05 UTC-4 — Oct 22 same-endpoint visibility toggle retest
+
+Evidence screenshots (capture timestamp shown in images):
+- `image(20261026-200429).png`: CISD [base] ON; red bearish level at approximately 1.1242 near the Oct 22 02:30 candle.
+- `image(20261026-200436).png`: Po3 Ultimate+ ON; corresponding red bearish level at the same market position.
+- `image(20261026-200456).png` and `image(20261026-200502).png`: indicators OFF/clean chart at replay endpoint.
+- `image(20261026-200514).png`: Po3 Ultimate+ restored, red level persists.
+- `image(20261026-200525).png`: CISD [base] restored, red level persists.
+
+Trader reports repeated OFF/ON/OFF/ON of both indicators without changing replay endpoint. Visible reference levels agree to screenshot precision, allowing for different chart zoom and scaling.
+
+**Result: PASS — reproducible bearish CISD level after recalculation at a fixed replay endpoint.**
+
+**Scope limitation:** Does not establish the event's first knowable candle close, no future-data/repainting globally, specific PB-positive classification, or equality of underlying engine implementation. The lower PB-candidate line seen in later-Oct-22 screenshots is not yet proven to exist at this endpoint; do not use this pass to claim PB parity. Exact level from Data Window/crosshair remains unrecorded.
+
+**Next controlled action:** replay forward one 15m candle at a time from before appearance of the candidate *second/lower* bearish mark and record first signal appearance (chart bar *open* label versus actual signal-confirmation *close*), whether that line represents PB in Ultimate+ and CISD [base], and its exact level. Record both snapshots at the same close and repeat a same-endpoint toggle for the candidate line.
