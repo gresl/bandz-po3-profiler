@@ -45,6 +45,7 @@ const string PO_G10 = "2 · Assets"
 const string PO_G6  = "3 · Po3 profile (C1-C4)"
 const string PO_G8  = "4 · CISD + STDV"
 const string PO_G8B = "4B · CISD structural research"
+const string PO_G8C = "4C · CISD V2 pivot research (experimental)"
 const string PO_G3  = "5 · SMT / SSMT"
 const string PO_GP  = "6 · PSP"
 const string PO_G4  = "7 · HTF candles"
@@ -165,6 +166,20 @@ string poCisdAuditFixedClose = input.string("", "Research: fixed CISD close NY",
 bool   poCisdOutcomeOn = input.bool(false, "Research: later 16/32-bar outcomes", tooltip = "Requires the event-time audit panel for display. Uses only subsequent CLOSED chart candles, with the CISD confirmation close and ATR14 frozen as reference. No entries or alerts.", group = PO_G8B)
 // Phase C6 diagnostic; no trading-signal or structural-filter changes.
 bool   poCisdParityAudit = input.bool(false, "Research: raw CISD / structural parity details", tooltip = "Adds six audit rows: candle OPEN and confirmed CLOSE time, delivery-open levels, and the last opposing candle. Opposing-candle reference is NOT a validated propulsion block.", group = PO_G8B)
+
+// CISD V2: entirely separate candidate lifecycle; defaults OFF, no connection to
+// legacy poCisds / poCisdEvents / sequence qualification / alerts.
+bool  v2rOn       = input.bool(false, "V2: enable pivot research detector", group=PO_G8C, tooltip="Experimental close-confirmed pivot candidates. Does not replace or feed Bandz CISD/Po3.")
+int   v2rPivotLen = input.int(1, "V2: confirmed pivot left/right bars", minval=1, maxval=4, group=PO_G8C)
+int   v2rBridge   = input.int(2, "V2: bars to find opposing stretch", minval=0, maxval=4, group=PO_G8C)
+int   v2rScanBars = input.int(12, "V2: maximum additional stretch bars", minval=1, maxval=30, group=PO_G8C)
+int   v2rMinRun   = input.int(1, "V2: minimum opposing stretch candles", minval=1, maxval=10, group=PO_G8C)
+int   v2rExpiry   = input.int(10, "V2: candidate expiry bars", minval=1, maxval=40, group=PO_G8C)
+bool  v2rAtrGate  = input.bool(false, "V2: require minimum stretch / ATR14", group=PO_G8C, tooltip="Experimental filter OFF by default; no outcome optimization.")
+float v2rMinAtr   = input.float(0.5, "V2: minimum stretch / ATR14", minval=0.05, maxval=5.0, step=0.05, group=PO_G8C)
+bool  v2rLines    = input.bool(true, "V2: plot pending levels and confirmation markers", group=PO_G8C)
+bool  v2rPanel    = input.bool(true, "V2: show bounded event registry", group=PO_G8C)
+
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -2923,3 +2938,167 @@ if barstate.islast and bandzModulePo3
         poUpdateCisdAudit()
     if po3ShowTable
         poUpdateMinimal()
+
+
+// =============================================================================
+// CISD V2 PIVOT LIFECYCLE RESEARCH — OPT IN (independent of Bandz legacy)
+// Original prototype rules, not a copy of the Cephxs implementation.
+// Every state transition below is based exclusively on CLOSED chart candles.
+// Pivot known at current close, anchored at (bar_index - v2rPivotLen).
+// No history backfilling, no intrabar confirmation claims, and no trade alerts.
+// State: 0 pending; 1 confirmed; 2 confirmed then invalidated;
+//        3 expired; 4 pending invalidated; 5 superseded by newer same-side pivot.
+// =============================================================================
+type PoV2PivotEvent
+    bool bull
+    int originBar
+    int pivotBar
+    int bornBar
+    int bornAt
+    float level
+    float extreme
+    float stretchAtr
+    int state
+    int confirmBar
+    int confirmAt
+    float confirmPrice
+    int terminalAt
+    string reason
+
+var array<PoV2PivotEvent> v2rEvents = array.new<PoV2PivotEvent>()
+float v2rPh = ta.pivothigh(high, v2rPivotLen, v2rPivotLen)
+float v2rPl = ta.pivotlow(low, v2rPivotLen, v2rPivotLen)
+float v2rAtr = ta.atr(14)
+
+// Finds a consecutive opposite-direction candle run adjacent to a confirmed pivot.
+// Allows a short bridge of nonmatching candles; the gap is NOT part of the run.
+// Returns history offsets [oldest, most recent], or [na, na] if absent.
+v2rFindStretch(bool bullishCandidate) =>
+    int recentOff = na
+    int oldestOff = na
+    for k = v2rPivotLen to v2rPivotLen + v2rBridge
+        bool opposite = bullishCandidate ? close[k] < open[k] : close[k] > open[k]
+        if opposite and na(recentOff)
+            recentOff := k
+    if not na(recentOff)
+        oldestOff := recentOff
+        for k = recentOff + 1 to recentOff + v2rScanBars
+            bool opposite = bullishCandidate ? close[k] < open[k] : close[k] > open[k]
+            if opposite
+                oldestOff := k
+            else
+                break
+    [oldestOff, recentOff]
+
+// Candidate generation and lifecycle update are NOT used by poLinkCisd, C1/C2,
+// T-Spots, STDV, original CISD display, webhooks or Po3 decisions.
+bool v2rNewBull = false
+bool v2rNewBear = false
+if v2rOn and barstate.isconfirmed
+    int v2rNow = na(time_close) ? time : time_close
+    // Distinct known pivot extremes; no forward-looking bar references.
+    for side = 0 to 1
+        bool bullish = side == 0
+        float pivotPrice = bullish ? v2rPl : v2rPh
+        if not na(pivotPrice)
+            [oldOff, recentOff] = v2rFindStretch(bullish)
+            if not na(oldOff) and not na(recentOff)
+                int n = oldOff - recentOff + 1
+                float startOpen = open[oldOff]
+                float runMovement = math.abs(startOpen - close[recentOff])
+                float magnitudeAtr = not na(v2rAtr) and v2rAtr > 0 ? runMovement / v2rAtr : na
+                bool sizeOk = not v2rAtrGate or (not na(magnitudeAtr) and magnitudeAtr >= v2rMinAtr)
+                if n >= v2rMinRun and sizeOk
+                    // Newest pivot supersedes an earlier PENDING candidate of same side.
+                    if v2rEvents.size() > 0
+                        for i = 0 to v2rEvents.size() - 1
+                            PoV2PivotEvent prior = v2rEvents.get(i)
+                            if prior.state == 0 and prior.bull == bullish
+                                prior.state := 5
+                                prior.terminalAt := v2rNow
+                                prior.reason := "SUPERSEDED"
+                    PoV2PivotEvent created = PoV2PivotEvent.new(
+                         bullish, bar_index - oldOff, bar_index - v2rPivotLen,
+                         bar_index, v2rNow, startOpen, pivotPrice, magnitudeAtr,
+                         0, na, na, na, na, "PENDING")
+                    v2rEvents.push(created)
+    // Confirm, reject or invalidate using only this CLOSED bar's OHLC.
+    // A freshly detected pivot candidate may confirm on this same closing bar;
+    // do not force an additional one-bar delay when evidence already exists.
+    if v2rEvents.size() > 0
+        for i = 0 to v2rEvents.size() - 1
+            PoV2PivotEvent ev = v2rEvents.get(i)
+            if ev.state == 0
+                bool breached = ev.bull ? low < ev.extreme : high > ev.extreme
+                bool timedOut = bar_index - ev.bornBar >= v2rExpiry
+                bool crossed = ev.bull ? close > ev.level : close < ev.level
+                if breached
+                    ev.state := 4
+                    ev.terminalAt := v2rNow
+                    ev.reason := "PIVOT_BREACH"
+                else if timedOut
+                    ev.state := 3
+                    ev.terminalAt := v2rNow
+                    ev.reason := "EXPIRED"
+                else if crossed
+                    ev.state := 1
+                    ev.confirmBar := bar_index
+                    ev.confirmAt := v2rNow
+                    ev.confirmPrice := close
+                    ev.reason := "CONFIRMED"
+                    if ev.bull
+                        v2rNewBull := true
+                    else
+                        v2rNewBear := true
+            else if ev.state == 1 and bar_index > ev.confirmBar
+                bool invalidated = ev.bull ? low < ev.extreme : high > ev.extreme
+                if invalidated
+                    ev.state := 2
+                    ev.terminalAt := v2rNow
+                    ev.reason := "INVALID_AFTER_CONFIRM"
+    // Bounded memory: retain latest 80 historical candidates of all states.
+    while v2rEvents.size() > 80
+        v2rEvents.shift()
+
+float v2rPendingBull = na
+float v2rPendingBear = na
+if v2rOn and v2rEvents.size() > 0
+    for i = v2rEvents.size() - 1 to 0
+        PoV2PivotEvent ev = v2rEvents.get(i)
+        if ev.state == 0
+            if ev.bull and na(v2rPendingBull)
+                v2rPendingBull := ev.level
+            if not ev.bull and na(v2rPendingBear)
+                v2rPendingBear := ev.level
+
+// Series begin only after the candidate is known; no retroactive line origin.
+plot(v2rOn and v2rLines ? v2rPendingBull : na, title="V2 pending bullish (not confirmed)", color=color.new(color.aqua, 25), linewidth=1, style=plot.style_linebr)
+plot(v2rOn and v2rLines ? v2rPendingBear : na, title="V2 pending bearish (not confirmed)", color=color.new(color.orange, 25), linewidth=1, style=plot.style_linebr)
+plotshape(v2rOn and v2rLines and v2rNewBull, title="V2 bullish confirmed at close", location=location.belowbar, style=shape.triangleup, color=color.aqua, size=size.tiny, text="V2", textcolor=color.aqua)
+plotshape(v2rOn and v2rLines and v2rNewBear, title="V2 bearish confirmed at close", location=location.abovebar, style=shape.triangledown, color=color.orange, size=size.tiny, text="V2", textcolor=color.orange)
+
+// Read-only registry. Timestamp columns explicitly show candidate first-known
+// CLOSE versus confirmation CLOSE in UTC; "pivot" is a historical anchor only.
+var table v2rTable = v2rOn and v2rPanel ? table.new(position.top_left, 6, 9, bgcolor=color.new(color.black, 15)) : na
+if v2rOn and v2rPanel and barstate.islast and not na(v2rTable)
+    table.cell(v2rTable, 0, 0, "V2 side", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 1, 0, "Level", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 2, 0, "Known close UTC", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 3, 0, "Confirm UTC", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 4, 0, "State", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 5, 0, "Stretch/ATR", text_color=color.white, text_size=size.tiny)
+    for row = 1 to 8
+        int idx = v2rEvents.size() - row
+        if idx >= 0
+            PoV2PivotEvent ev = v2rEvents.get(idx)
+            string status = ev.state == 0 ? "PENDING" : ev.state == 1 ? "CONFIRMED" : ev.state == 2 ? "INVALIDATED" : ev.state == 3 ? "EXPIRED" : ev.state == 4 ? "REJECTED" : "SUPERSEDED"
+            color fg = ev.state == 1 ? color.lime : ev.state == 0 ? color.yellow : color.silver
+            table.cell(v2rTable, 0, row, ev.bull ? "BULL" : "BEAR", text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 1, row, str.tostring(ev.level, format.mintick), text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 2, row, str.format_time(ev.bornAt, "MM-dd HH:mm", "UTC"), text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 3, row, na(ev.confirmAt) ? "—" : str.format_time(ev.confirmAt, "MM-dd HH:mm", "UTC"), text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 4, row, status, text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 5, row, na(ev.stretchAtr) ? "n/a" : str.tostring(ev.stretchAtr, "#.00"), text_color=fg, text_size=size.tiny)
+        else
+            for col = 0 to 5
+                table.cell(v2rTable, col, row, "", text_size=size.tiny)
