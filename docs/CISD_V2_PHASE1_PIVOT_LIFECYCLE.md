@@ -66,3 +66,18 @@ The raw V2 defaults (minimum opposing-run length 1 and ATR stretch filter off) p
 
 **Outstanding:** preserve the raw A configuration as TradingView template and separate chart layout; compare one parameter at a time (first min run 1 vs 2, *without* enabling ATR filter simultaneously); inspect both bullish/bearish positive examples and negative controls; verify event state transitions under advancing Replay. No Pine source changes required at this checkpoint.
 
+
+## TradingView acceptance checkpoint — 2026-11-16 experiment MinRun 1 vs 2
+
+User tested `FOREXCOM:GBPUSD` 15m around the November 11 05:45 UTC event with an unchanged Replay endpoint, legacy Bandz audit still visible. Two comparison screenshots were provided on November 16 at 19:03 and 19:15 UTC.
+
+| Event UTC on 2026-11-11 | V2 raw MinRun=1 | V2-B MinRun=2 |
+|---|---|---|
+| BEAR 03:45, level 1.33475 | CONFIRMED | CONFIRMED |
+| BULL 05:00, level 1.33471 | CONFIRMED | No longer in recent V2 history / no corresponding marker |
+| BEAR 05:45, level 1.33454 | CONFIRMED | CONFIRMED |
+| BULL candidate known 04:15, level 1.33533 | SUPERSEDED | PENDING |
+
+All other parameters were intended to remain fixed: pivot 1, bridge 2, scan 12, expiry 10, ATR gate OFF. New screenshot did not separately show the input panel, so changes are inferred from the instructed single-parameter procedure and effects; explicitly reconfirm if behavior disagrees in subsequent tests.
+
+Interpretation: fewer signals with MinRun 2, but NOT proven higher validity. Pending-event survival also changes; registry only displays latest eight candidates, so do not compute frequency statistics from rows alone. The Nov 11 05:45 bearish event is still first-known and confirmed at 05:45 UTC — no proven early warning. Next experiment isolates ATR filter against **original MinRun 1**, not stacked on MinRun 2. Keep both baseline snapshots saved before changing settings.
