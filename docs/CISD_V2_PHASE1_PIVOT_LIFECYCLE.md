@@ -55,3 +55,14 @@ Default: pivot left/right = 1, bridge = 2, additional scan = 12, min run = 1, ex
 - Pine source is uncompiled here. Native TradingView is required for script compile and runtime validation.
 - Current prototype intentionally does not include an *intrabar* early-preview state, to keep the first research pass non-repainting. It can be added as a separate explicitly provisional visual after close-only behavior is stable.
 - The exact 2026-11-11 Cephxs timestamp cannot be reconstructed from the historical line anchor alone.
+
+## TradingView acceptance checkpoint — 2026-11-16
+
+User reports that the integrated experimental V2 Pine script **compiled successfully in TradingView** and that its V2 registry/markers render on GBPUSD 15m. User supplied chart screenshots taken 2026-11-16 18:49–19:03 UTC.
+
+At the GBPUSD November 11 historical replay endpoint, the V2 registry visibly shows a **BEAR / 1.33454 / first-known 2026-11-11 05:45 UTC / confirmed 2026-11-11 05:45 UTC**. The independent legacy C6 fixed-time audit shows the 05:45 UTC bearish event at the same level. This verifies a close-time and price-level consistency for **one** event; it does **not** establish correctness of all V2 signals or parity with Cephxs.
+
+The raw V2 defaults (minimum opposing-run length 1 and ATR stretch filter off) produce numerous additional confirmations, including small-stretch candidates. Do not silently interpret signal count as a performance improvement.
+
+**Outstanding:** preserve the raw A configuration as TradingView template and separate chart layout; compare one parameter at a time (first min run 1 vs 2, *without* enabling ATR filter simultaneously); inspect both bullish/bearish positive examples and negative controls; verify event state transitions under advancing Replay. No Pine source changes required at this checkpoint.
+
