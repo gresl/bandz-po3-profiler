@@ -62,3 +62,9 @@ This matches the prior V2 `BEAR CONFIRMED` record at **2026-11-12 02:30 UTC** at
 **Classification update:** `V2_ONLY vs LEGACY`, `Cephxs visually confirmed with matching level + observed Replay closing bar at 02:30 UTC`. This is a strong positive **mechanical** reference case, not evidence of higher profitability or sufficient sample size.
 
 Next root-cause investigation: isolate why legacy raw run-based logic does not confirm here versus V2's pivot-seeded candidate, before changing rules. Capture/obtain exact-feed OHLC if needed; do not reconstruct OHLC numerically from the image.
+
+### Source-level missing-legacy hypotheses (not yet proved for exact candle)
+
+Bandz legacy raw engine (see `Bandz_Po3_Profiler.pine`, around lines 1524–1570 on this branch) requires for bearish events: a red closing candle, an earlier saved **bullish-run length >= `poCisdMinRun` (configured 2)**, a close below the first run's open in Standard mode, age <=60 bars and no existing same-bar CISD. V2 instead uses pivot-seeded opposing-run candidates with **`v2rMinRun=1`**, ATR stretch gate 0.5 and separate pivot-extreme invalidation. The source-level **most economical hypothesis** is that the reference run that spawned the Cephxs/V2 02:30 close had only one qualifying bullish candle under the legacy run accounting, or a differing level; other run/reset and duplicate-bar guards remain possible.
+
+The image alone does not yield an exact independently verifiable OHLC array or legacy internal run-state values, so no particular failed predicate should be stated as fact. Next prefer read-only C6-style probe at fixed 02:30 UTC to print legacy bullish-run length and first-run-open, duplicate-bar/age guards, V2 pivot/level and then a side-by-side rule diagnosis. Do not alter the raw detection threshold merely to make this case match.
