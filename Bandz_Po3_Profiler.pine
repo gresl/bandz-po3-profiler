@@ -180,6 +180,15 @@ float v2rMinAtr   = input.float(0.5, "V2: minimum stretch / ATR14", minval=0.05,
 bool  v2rLines    = input.bool(true, "V2: plot pending levels and confirmation markers", group=PO_G8C)
 bool  v2rPanel    = input.bool(true, "V2: show bounded event registry", group=PO_G8C)
 
+// Phase 2 audit: compares existing legacy CISD history with V2 CLOSED confirmations.
+// No detection, visual signal, Po3, alert, or candidate-state changes.
+bool v2dOn = input.bool(false, "V2 audit: compare legacy vs V2", group=PO_G8C,
+     tooltip="Read-only disagreement table (top right). Compares Bandz LEGACY and pivot V2 confirmed histories; Cephxs is NOT included.")
+int v2dBars = input.int(96, "V2 audit: maximum comparison bars", minval=24, maxval=384, group=PO_G8C)
+int v2dSameTicks = input.int(3, "V2 audit: same-level tolerance (ticks)", minval=0, maxval=30, group=PO_G8C)
+int v2dNearTicks = input.int(20, "V2 audit: near-time tolerance (ticks)", minval=1, maxval=100, group=PO_G8C)
+
+
 bool   poStdvOn        = po3ShowStdv
 color  poStdvBull      = input.color(color.rgb(74, 74, 74), "STDV", inline = "poSd", tooltip = "level = CISD + d x (CISD - C2 extreme), the Bandz CISD + STDV leg math. Drawn on the newest sequence with a CISD, from the CISD to the current bar; dims once the CISD closes back through or the sequence dies.", group = PO_G8)
 color  poStdvBear      = input.color(color.rgb(74, 74, 74), "", inline = "poSd", group = PO_G8)
@@ -3102,3 +3111,162 @@ if v2rOn and v2rPanel and barstate.islast and not na(v2rTable)
         else
             for col = 0 to 5
                 table.cell(v2rTable, col, row, "", text_size=size.tiny)
+
+
+// =============================================================================
+// CISD V2 PHASE 2: READ-ONLY DISAGREEMENT AUDIT
+// Two-pass one-to-one matching: exact direction+confirmation close first,
+// then +/- ONE chart bar with nearby price. Exact-time different-level events
+// remain LEVEL_DIFF, and V2 invalidated confirmations still count as CONFIRMED.
+// Cutoff never extends before the oldest retained V2 candidate and legacy event.
+// Labels are mechanical comparisons, NOT trade-quality or Cephxs verification.
+// =============================================================================
+var table v2dTable = v2dOn ? table.new(position.top_right, 6, 11,
+     bgcolor=color.new(color.black, 10)) : na
+
+if v2dOn and barstate.islast and not na(v2dTable)
+    table.cell(v2dTable, 0, 0, "V2 vs LEGACY", text_color=color.white, text_size=size.tiny)
+    table.cell(v2dTable, 1, 0, "CLOSED events", text_color=color.white, text_size=size.tiny)
+    table.cell(v2dTable, 2, 0, "No Cephxs", text_color=color.yellow, text_size=size.tiny)
+    table.cell(v2dTable, 3, 0, barstate.isconfirmed ? "END CLOSED" : "END OPEN", text_color=color.silver, text_size=size.tiny)
+    table.cell(v2dTable, 4, 0, "End " + str.format_time(time_close, "MM-dd HH:mm", "UTC"), text_color=color.silver, text_size=size.tiny)
+    table.cell(v2dTable, 5, 0, "ONLY", text_color=color.yellow, text_size=size.tiny)
+    for c = 1 to 5
+        table.cell(v2dTable, c, 1, "", text_size=size.tiny)
+    for c = 0 to 5
+        string heading = c == 0 ? "UTC close" : c == 1 ? "Side" : c == 2 ? "Source" : c == 3 ? "Level" : c == 4 ? "Class" : "Related"
+        table.cell(v2dTable, c, 2, heading, text_color=color.silver, text_size=size.tiny)
+    for row = 3 to 10
+        for c = 0 to 5
+            table.cell(v2dTable, c, row, "", text_size=size.tiny)
+
+    if v2rEvents.size() == 0 or poCisdEvents.size() == 0
+        table.cell(v2dTable, 0, 1, "No overlapping event histories", text_color=color.yellow, text_size=size.tiny)
+    else
+        int cutoff = math.max(bar_index - v2dBars,
+             math.max(v2rEvents.first().bornBar, poCisdEvents.first().confirmBar))
+        float sameTol = v2dSameTicks * syminfo.mintick
+        float nearTol = v2dNearTicks * syminfo.mintick
+        array<int> vCodes = array.new_int(v2rEvents.size(), 0)
+        array<int> lCodes = array.new_int(poCisdEvents.size(), 0)
+        array<int> vMate = array.new_int(v2rEvents.size(), -1)
+        int nExact = 0
+        int nLevel = 0
+        int nTime = 0
+        int nStamp = 0
+        int nVonly = 0
+        int nLonly = 0
+
+        // Exact bar+timestamp first; any same-bar timestamp drift is EXPLICIT.
+        // Finally pair near-price events one chart bar apart, one-to-one.
+        for pass = 0 to 2
+            for vi = 0 to v2rEvents.size() - 1
+                PoV2PivotEvent ve = v2rEvents.get(vi)
+                bool isConfirmed = ve.state == 1 or ve.state == 2
+                if isConfirmed and ve.confirmBar >= cutoff and vCodes.get(vi) == 0
+                    int bestLi = -1
+                    float bestScore = 1e15
+                    for li = 0 to poCisdEvents.size() - 1
+                        PoCisdEvent le = poCisdEvents.get(li)
+                        if le.confirmBar >= cutoff and le.bull == ve.bull and lCodes.get(li) == 0
+                            int barGap = math.abs(le.confirmBar - ve.confirmBar)
+                            float lvlGap = math.abs(le.level - ve.level)
+                            bool sameStamp = le.confirmTime == ve.confirmAt
+                            bool candidate = pass == 0 ? (barGap == 0 and sameStamp) : pass == 1 ? (barGap == 0 and not sameStamp and lvlGap <= nearTol) : (barGap == 1 and lvlGap <= nearTol)
+                            float score = lvlGap / syminfo.mintick
+                            if candidate and score < bestScore
+                                bestScore := score
+                                bestLi := li
+                    if bestLi >= 0
+                        PoCisdEvent matchedLegacy = poCisdEvents.get(bestLi)
+                        int matchCode = pass == 2 ? 3 : pass == 1 ? 4 : math.abs(ve.level - matchedLegacy.level) <= sameTol ? 1 : 2
+                        vCodes.set(vi, matchCode)
+                        lCodes.set(bestLi, matchCode)
+                        vMate.set(vi, bestLi)
+                        if matchCode == 1
+                            nExact += 1
+                        else if matchCode == 2
+                            nLevel += 1
+                        else if matchCode == 3
+                            nTime += 1
+                        else
+                            nStamp += 1
+
+        array<int> gapTimes = array.new_int()
+        array<string> gapSides = array.new_string()
+        array<string> gapSources = array.new_string()
+        array<string> gapLevels = array.new_string()
+        array<string> gapClasses = array.new_string()
+        array<string> gapNotes = array.new_string()
+
+        // Confirmed V2 events that disagree with legacy or have no peer.
+        for vi = 0 to v2rEvents.size() - 1
+            PoV2PivotEvent ve = v2rEvents.get(vi)
+            if (ve.state == 1 or ve.state == 2) and ve.confirmBar >= cutoff
+                int code = vCodes.get(vi)
+                if code != 1
+                    string tag = code == 2 ? "LEVEL_DIFF" : code == 3 ? "TIME_DIFF" : code == 4 ? "STAMP_DIFF" : "V2_ONLY"
+                    string note = "No legacy close"
+                    if code == 0
+                        nVonly += 1
+                    else
+                        PoCisdEvent le = poCisdEvents.get(vMate.get(vi))
+                        note := "L " + str.format_time(le.confirmTime, "MM-dd HH:mm", "UTC") +
+                             " @ " + str.tostring(le.level, format.mintick)
+                    gapTimes.push(ve.confirmAt)
+                    gapSides.push(ve.bull ? "BULL" : "BEAR")
+                    gapSources.push("V2")
+                    gapLevels.push(str.tostring(ve.level, format.mintick))
+                    gapClasses.push(tag)
+                    gapNotes.push(note)
+
+        // Legacy-only closes are more informative when a similar V2 PENDING,
+        // REJECTED, EXPIRED or SUPERSEDED candidate was known nearby.
+        for li = 0 to poCisdEvents.size() - 1
+            PoCisdEvent le = poCisdEvents.get(li)
+            if le.confirmBar >= cutoff and lCodes.get(li) == 0
+                nLonly += 1
+                string note = "No related V2 candidate"
+                float bestGap = 1e15
+                for vi = 0 to v2rEvents.size() - 1
+                    PoV2PivotEvent ve = v2rEvents.get(vi)
+                    bool unconfirmed = ve.state == 0 or ve.state == 3 or ve.state == 4 or ve.state == 5
+                    bool inWindow = ve.bornBar <= le.confirmBar and le.confirmBar - ve.bornBar <= v2rExpiry + 1
+                    float levelGap = math.abs(ve.level - le.level)
+                    if unconfirmed and inWindow and ve.bull == le.bull and levelGap <= nearTol and levelGap < bestGap
+                        bestGap := levelGap
+                        note := "Related V2 " + ve.reason + " (not proof)"
+                gapTimes.push(le.confirmTime)
+                gapSides.push(le.bull ? "BULL" : "BEAR")
+                gapSources.push("LEGACY")
+                gapLevels.push(str.tostring(le.level, format.mintick))
+                gapClasses.push("LEGACY_ONLY")
+                gapNotes.push(note)
+
+        // The cutoff is an overlapping retained-history bound, not necessarily
+        // the whole user-selected lookback if either registry truncated early.
+        string windowFrom = str.format_time(time[bar_index - cutoff], "MM-dd HH:mm", "UTC")
+        table.cell(v2dTable, 0, 1, "From " + windowFrom, text_color=color.silver, text_size=size.tiny)
+        table.cell(v2dTable, 1, 1, "EXACT " + str.tostring(nExact), text_color=color.lime, text_size=size.tiny)
+        table.cell(v2dTable, 2, 1, "LEVEL " + str.tostring(nLevel), text_color=color.orange, text_size=size.tiny)
+        table.cell(v2dTable, 3, 1, "TIME " + str.tostring(nTime), text_color=color.orange, text_size=size.tiny)
+        table.cell(v2dTable, 4, 1, "V2only " + str.tostring(nVonly), text_color=color.yellow, text_size=size.tiny)
+        table.cell(v2dTable, 5, 1, "Lonly " + str.tostring(nLonly), text_color=color.yellow, text_size=size.tiny)
+        table.cell(v2dTable, 5, 0, "STAMP " + str.tostring(nStamp), text_color=nStamp > 0 ? color.orange : color.silver, text_size=size.tiny)
+
+        if gapTimes.size() == 0
+            table.cell(v2dTable, 0, 3, "No mismatches in overlap", text_color=color.lime, text_size=size.tiny)
+        else
+            array<int> rank = array.sort_indices(gapTimes, order.descending)
+            int shown = math.min(rank.size(), 8)
+            for row = 0 to shown - 1
+                int g = rank.get(row)
+                int t = gapTimes.get(g)
+                string cls = gapClasses.get(g)
+                color fg = cls == "V2_ONLY" ? color.aqua : cls == "LEGACY_ONLY" ? color.yellow : color.orange
+                table.cell(v2dTable, 0, row + 3, str.format_time(t, "MM-dd HH:mm", "UTC"), text_color=fg, text_size=size.tiny)
+                table.cell(v2dTable, 1, row + 3, gapSides.get(g), text_color=fg, text_size=size.tiny)
+                table.cell(v2dTable, 2, row + 3, gapSources.get(g), text_color=fg, text_size=size.tiny)
+                table.cell(v2dTable, 3, row + 3, gapLevels.get(g), text_color=fg, text_size=size.tiny)
+                table.cell(v2dTable, 4, row + 3, cls, text_color=fg, text_size=size.tiny)
+                table.cell(v2dTable, 5, row + 3, gapNotes.get(g), text_color=color.silver, text_size=size.tiny)
