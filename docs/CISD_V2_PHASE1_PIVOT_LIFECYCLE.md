@@ -81,3 +81,17 @@ User tested `FOREXCOM:GBPUSD` 15m around the November 11 05:45 UTC event with an
 All other parameters were intended to remain fixed: pivot 1, bridge 2, scan 12, expiry 10, ATR gate OFF. New screenshot did not separately show the input panel, so changes are inferred from the instructed single-parameter procedure and effects; explicitly reconfirm if behavior disagrees in subsequent tests.
 
 Interpretation: fewer signals with MinRun 2, but NOT proven higher validity. Pending-event survival also changes; registry only displays latest eight candidates, so do not compute frequency statistics from rows alone. The Nov 11 05:45 bearish event is still first-known and confirmed at 05:45 UTC — no proven early warning. Next experiment isolates ATR filter against **original MinRun 1**, not stacked on MinRun 2. Keep both baseline snapshots saved before changing settings.
+
+## TradingView acceptance checkpoint — 2026-11-17 ATR-only filter
+
+On GBPUSD 15m, user tested V2 `min run = 1`, ATR stretch gate `ON` at `0.5`, while preserving pivot=1, bridge=2, additional scan=12, expiry=10. Settings are visible in the supplied first screenshot; a second screenshot shows the unobstructed Replay outcome at the same November 11 historical endpoint. The legacy C6 fixed-event audit remains selected for 2026-11-11 00:45 New York (05:45 UTC), level 1.33454.
+
+Observed V2 registry (UTC):
+- BEAR 05:45, level 1.33454: CONFIRMED, stretch/ATR approximately 1.25.
+- BEAR 03:45, level 1.33475: CONFIRMED, stretch/ATR approximately 1.37.
+- BULL candidate 04:15, level approximately 1.33533: PENDING, stretch/ATR approximately 1.68.
+- RAW minrun1 / ATR-off had shown BULL 05:00, level 1.33471: CONFIRMED, stretch/ATR approximately 0.42; absent from the new recent registry/visible marker after threshold 0.5. MinRun2 separately suppressed it as well.
+
+**Conclusion:** The ATR-only setting filters at least one low-stretch bullish event while retaining two bearish events. B (minrun2) and C (ATR0.5) agree on this small example but for different reasons; neither is proven better. The current V2 level/magnitude are heuristic measures, not validated trade eligibility. Bounded registry (8 rows) is not suitable for global event count statistics. The 05:45 close remains the earliest observed *confirmed* time for that fixed event, not evidence of a 05:30 intrabar trade signal.
+
+**Next acceptance gate:** Preserve ATR-only indicator template as a separate version; perform one discriminating opposite-direction / no-entry fixture with fixed feed and endpoint, or expand registry/export to systematically tabulate candidate differences rather than adjusting thresholds based solely on this case.
