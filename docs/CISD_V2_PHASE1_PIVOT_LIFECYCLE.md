@@ -106,3 +106,16 @@ At GBPUSD 15m Replay after the Nov 12 2026 07:30 UTC close, user supplied V2 ATR
 - V2 registry also includes REJECTED, SUPERSEDED and INVALIDATED events around this window; these are lifecycle states, not final-quality labels.
 - This establishes an initial bullish **mechanical** positive-control confirmation under ATR 0.5. It does not establish indicator profitability or better detection than Cephxs. There is no evidence of an earlier close for this event.
 - Follow-up should prioritize evaluating one *disagreement/negative-control* case with exact OHLC and times rather than further parameter tuning on matched events.
+
+## TradingView acceptance checkpoint — 2026-11-17 bullish paired audit verified
+
+The user supplied the corrected **legacy Bandz** fixed-time audit panel on November 17. The panel is locked to `2026-11-12 02:30` America/New_York and reports:
+
+- Raw direction BULL; confirmation close **2026-11-12 07:30 UTC** (02:30 NY); initiating chart bar opens 02:15 NY.
+- Raw level **1.32606**, confirming close **1.32615**, breach **+9.0 ticks = 0.9 pip** on GBPUSD.
+- Body/range **30.8%**, candle body/ATR14 **0.36x**, directional close **95.8%**.
+- C2 linked: **No**; C1 swept/C2 closed at confirmation: N/N; at-close indicator eligibility: ELIGIBLE. Source panel's MATCH = immutable raw audit vs recalculation **within legacy Bandz**, not external parity.
+- The separately captured V2 ATR0.5 event registry shows **BULL 1.32606, first known 07:30 UTC, confirmed 07:30 UTC**, stretch/ATR about **1.09**. These metrics are intentionally different: legacy 0.36x is confirming candle BODY/ATR, V2 1.09x is opposing STRETCH/ATR.
+- This is an **exact mechanical cross-indicator agreement on close-time and level for one event**; it does not validate the event as a Po3 trade or show earlier confirmation than the baseline.
+
+**Phase 1 filter-screen conclusion:** Nov11 BEAR 05:45 and Nov12 BULL 07:30 both survive ATR0.5 and match legacy raw levels/close-times. Lower marker count alone does not indicate quality. Stop tweaking thresholds on this narrow sample; select a candidate disagreement / negative control, preserve OHLC and known/confirmation timestamps, and inspect candidate rejection reasons before changing detector rules.
