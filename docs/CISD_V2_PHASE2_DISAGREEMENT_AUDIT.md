@@ -1,0 +1,68 @@
+# CISD V2 Phase 2 — mechanical disagreement audit
+
+**Status:** research-only implementation; Pine v6 compilation and TradingView Replay acceptance **pending**.  
+**Branch:** `experiment/cisd-v2-disagreement-audit-20261117` (based on `experiment/cisd-v2-pivot-lifecycle-20261115`).
+
+## Why
+
+Phase 1 produced positive closed-bar matches for the GBPUSD 15m bearish event at **2026-11-11 05:45 UTC, 1.33454** and bullish event at **2026-11-12 07:30 UTC, 1.32606**. The question now is **where and why the engines disagree**. More or fewer drawings do not establish model quality.
+
+The Bandz legacy event recorder (`poCisdEvents`) and experimental V2 pivot event recorder (`v2rEvents`) coexist in the same Pine script. This phase adds a **read-only, opt-in comparison table**, without modifying either detector, original Bandz Po3 links, or alerts.
+
+## Inputs (4C · CISD V2 pivot research)
+
+- `V2: enable pivot research detector`: **ON**.
+- `V2 audit: compare legacy vs V2`: **ON** to show comparison table at top right. Defaults **OFF** in source.
+- `V2 audit: maximum comparison bars`: 96 (about one day of uninterrupted 15m bars; data gaps affect elapsed duration).
+- `V2 audit: same-level tolerance (ticks)`: 3 (0.3 pip for a 5-decimal non-JPY forex feed with 0.00001 tick size).
+- `V2 audit: near-time tolerance (ticks)`: 20 (2 pips for that feed); applies only when confirmations occur **exactly one bar apart**.
+- Preserve V2's previously saved `MinRun=1, ATR stretch gate=ON, ATR threshold=0.5, pivot=1, bridge=2, scan=12, expiry=10` for the first disagreement pass.
+- Leave legacy CISD inputs unchanged from baseline. The legacy event-history recorder does not require its line drawings or audit panel to be visible, but ensure it is not disabled by changing code.
+
+**Do not overwrite the RAW, MINRUN2, ATR05 templates or chart layouts.** Use a separate "DISAGREEMENT" research copy.
+
+## Algorithm: exactly what classification means
+
+Event eligibility: V2 `CONFIRMED` and previously confirmed but now `INVALIDATED` both count as confirmed. Rejected, expired, superseded and pending candidates never count as confirmations. All legacy history entries are confirmed.
+
+Both collections are bounded. The comparable window begins at the **latest** of (a) the selected last N chart bars, (b) the oldest retained V2 candidate's first-known bar, and (c) the oldest retained legacy event's confirmation bar. Therefore **the panel does not claim to cover more history than the recorders actually retain**.
+
+The comparison greedily matches pairs of the **same direction**, with each confirmation usable at most once:
+
+1. **Exact confirmation bar first**: if reference levels are within 3 ticks, label `EXACT`; otherwise `LEVEL_DIFF`.
+2. **Only unpaired events**, confirmed **one chart bar apart**, with reference levels within 20 ticks: `TIME_DIFF`.
+3. Remaining unmatched V2 confirmations: `V2_ONLY`.
+4. Remaining unmatched legacy confirmations: `LEGACY_ONLY`. Search for a nearby same-direction V2 **unconfirmed** candidate at a similar price. A `Related V2 REJECTED/EXPIRED/SUPERSEDED/PENDING` note is diagnostic correlation only, **not proof of why** the legacy event was missing.
+
+The top-right panel displays counts over that intersection and the **8 most recent non-EXACT events**. Summary counts are not signals of profitability; no accuracy can be measured without human-approved cases and proper OHLC evidence.
+
+## Limitations
+
+- **Cephxs reference signals are NOT inside the table.** Pine scripts cannot read another closed-source indicator's internal candidate collections. A screenshot comparison with Cephxs or manually obtained log remains necessary after a useful Bandz mismatch is identified.
+- Same-time mismatched price levels are not automatically incorrect; there can be more than one plausible structural reference.
+- The one-bar nearby pairing is a heuristic: it can pair related-but-distinct events during choppy price action. Review both origins and price levels before asserting timing differences.
+- A missing event might result from source-engine differences, ATR/MinRun filters, lifecycle/expiry, bounded-history truncation or feed/session differences. The panel cannot assign causality.
+- The V2 event registry stores at most 80 **all-state candidates**, whereas legacy stores up to 100 **confirmed** events. This is why the intersection cutoff is essential.
+- Realtime provisional signals / repainting are outside this closed-event audit. Do not infer 05:30:01 firing from a historical 05:30 line anchor.
+- The indicator may render both the legacy audit (bottom-right) and V2 registry (top-left). Only turn on the extra top-right difference table when needed, to reduce clutter.
+- The `same-level` and `near-time` tolerance values are classification thresholds, **not new detector thresholds**.
+
+## First TradingView acceptance fixture
+
+Feed: `FOREXCOM:GBPUSD`, timeframe `15m`, UTC chart timezone, replay to **2026-11-12 07:45 UTC** (after the bullish 07:30 confirmation). Use the saved ATR05 detector configuration, but add the Phase 2 comparison panel.
+
+1. Compile the new branch as a **new Pine Editor script/copy**, never overwrite the previously validated V2.
+2. Confirm no compiler/runtime errors.
+3. Check whether known **BEAR 2026-11-11 05:45 UTC @1.33454** and **BULL 2026-11-12 07:30 UTC @1.32606** are included in `EXACT` when inside the comparable retained-history window. If outside the intersection, they are **out-of-sample** for that snapshot, not discrepancies.
+4. Capture the entire top-right disagreement table and event context. Choose the **newest actionable `LEGACY_ONLY` or `V2_ONLY`**, prefer a same-direction related rejected candidate if displayed. Record direction, UTC confirmation close, reference level and V2 rejection reason for the next audit.
+5. Freeze this case; then inspect raw candle OHLC and drawing/confirmation timing before proposing algorithm changes.
+
+## Offline regression tests
+
+`python3 -m unittest discover -s research/tests -v`
+
+The new `research/tests/test_v2_disagreement_oracle.py` contains ten synthetic classification tests. They verify one-to-one matching and classification boundaries, **not** the Pine compiler, historical broker feeds or Cephxs parity.
+
+## Acceptance / merge gate
+
+Keep this branch and its draft PR **unmerged** until native Pine compile, repeatable Replay output and one verified disagreement classification pass. Do not merge purely because synthetic tests pass.
