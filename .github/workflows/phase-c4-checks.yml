@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/cisd-v1.4-phase-c-c4-analysis
+      - experiment/cisd-v2-pivot-lifecycle-20261115
   pull_request:
     paths:
       - "research/**"
@@ -21,7 +22,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile research tools
-        run: python3 -m py_compile research/validate_cisd_sample.py research/analyze_cisd_sample.py research/tests/test_cisd_analysis.py
+        run: python3 -m py_compile research/validate_cisd_sample.py research/analyze_cisd_sample.py research/tests/test_cisd_analysis.py research/cisd_v2_oracle.py research/tests/test_v2_pivot_oracle.py
       - name: Synthetic research tests
         run: python3 -m unittest discover -s research/tests -v
       - name: Validate and analyze empty canonical manifest
