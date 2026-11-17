@@ -45,3 +45,20 @@ The Cephxs reference Pine source (`gresl/cephxs-cisd-reference/source/cephxs-cis
 ### Next minimal independent timing control
 
 Keep Cephxs only, same settings; jump Bar Replay to around **2026-11-12 02:00 UTC** and advance one closed 15m bar at a time through **02:45 UTC**. Record the first endpoint where the red line is **solid**, and if it was dotted before; maintain identical feed/timeframe and avoid changing Show All Historical CISD or sensitivity. This cannot establish the exact first intrabar tick, only the first 15m Replay close where the drawing is observable. Preserve screenshots before and after that transition. Do not change either Bandz detector until the timing question is recorded.
+
+## Cephxs forward-Replay transition — November 17, 2026, 18:22 UTC
+
+Two consecutive Cephxs-only TradingView Replay screenshots (both created 2026-11-17 18:22 UTC) establish the first **observed bar-by-bar appearance** of the solid red line at approximately `1.32745`:
+
+| Screenshot | Latest visible 15m bar (UTC bar open) | Full bar closes | Cephxs red solid CISD |
+|---|---|---|---|
+| Earlier | 2026-11-12 02:00 | 02:15 UTC | **Absent** |
+| After one 15m Replay step | 2026-11-12 02:15 | **02:30 UTC** | **Present**, level visually ~1.32745 |
+
+This matches the prior V2 `BEAR CONFIRMED` record at **2026-11-12 02:30 UTC** at **1.32745**. Legacy Bandz has no matching closed event in the bounded comparison window.
+
+**Precision boundary:** The first screenshot does not show a dotted candidate at that same level, but absence of a visible dotted line does not prove no internal pending candidate. The Cephxs source's `confirm_ok` uses the changing `close` without an explicit `barstate.isconfirmed` guard and creates a solid line on confirmation. Therefore these historical, one-bar-at-a-time screenshots **do not establish the first realtime intrabar appearance or non-repainting alert time**; they establish agreement at the 02:30 closed-bar granularity. Neither a 15-minute advantage nor a 15-minute lag between Cephxs and V2 is shown by this case.
+
+**Classification update:** `V2_ONLY vs LEGACY`, `Cephxs visually confirmed with matching level + observed Replay closing bar at 02:30 UTC`. This is a strong positive **mechanical** reference case, not evidence of higher profitability or sufficient sample size.
+
+Next root-cause investigation: isolate why legacy raw run-based logic does not confirm here versus V2's pivot-seeded candidate, before changing rules. Capture/obtain exact-feed OHLC if needed; do not reconstruct OHLC numerically from the image.
