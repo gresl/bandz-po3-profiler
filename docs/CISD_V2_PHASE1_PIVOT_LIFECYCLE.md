@@ -95,3 +95,14 @@ Observed V2 registry (UTC):
 **Conclusion:** The ATR-only setting filters at least one low-stretch bullish event while retaining two bearish events. B (minrun2) and C (ATR0.5) agree on this small example but for different reasons; neither is proven better. The current V2 level/magnitude are heuristic measures, not validated trade eligibility. Bounded registry (8 rows) is not suitable for global event count statistics. The 05:45 close remains the earliest observed *confirmed* time for that fixed event, not evidence of a 05:30 intrabar trade signal.
 
 **Next acceptance gate:** Preserve ATR-only indicator template as a separate version; perform one discriminating opposite-direction / no-entry fixture with fixed feed and endpoint, or expand registry/export to systematically tabulate candidate differences rather than adjusting thresholds based solely on this case.
+
+## TradingView acceptance checkpoint — 2026-11-17 bullish control
+
+At GBPUSD 15m Replay after the Nov 12 2026 07:30 UTC close, user supplied V2 ATR-only screenshot with the V2 event registry and legacy Bandz event-time audit visible.
+
+- **V2 registry:** BULL level **1.32606**, first known **2026-11-12 07:30 UTC**, confirmation **2026-11-12 07:30 UTC**, state **CONFIRMED**, stretch/ATR approximately **1.09**.
+- Previous legacy Bandz audit (independent earlier capture) recorded a BULL at **2026-11-12 07:30 UTC**, level **1.32606**, providing a historical cross-check.
+- **Important defect in screenshot setup:** the legacy audit panel remained fixed to `2026-11-11 00:45` New York, displaying the preceding BEAR 05:45 UTC event, so it is **not** a same-screen contemporaneous legacy panel match. User should change fixed NY close to `2026-11-12 02:30` and capture only the audit panel once to independently verify the paired 07:30 event under current Replay.
+- V2 registry also includes REJECTED, SUPERSEDED and INVALIDATED events around this window; these are lifecycle states, not final-quality labels.
+- This establishes an initial bullish **mechanical** positive-control confirmation under ATR 0.5. It does not establish indicator profitability or better detection than Cephxs. There is no evidence of an earlier close for this event.
+- Follow-up should prioritize evaluating one *disagreement/negative-control* case with exact OHLC and times rather than further parameter tuning on matched events.
