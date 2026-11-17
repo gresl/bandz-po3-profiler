@@ -3134,8 +3134,8 @@ if v2dOn and barstate.islast and not na(v2dTable)
     for c = 1 to 5
         table.cell(v2dTable, c, 1, "", text_size=size.tiny)
     for c = 0 to 5
-        table.cell(v2dTable, c, 2, array.get(array.from("UTC close", "Side", "Source", "Level", "Class", "Related"), c),
-             text_color=color.silver, text_size=size.tiny)
+        string heading = c == 0 ? "UTC close" : c == 1 ? "Side" : c == 2 ? "Source" : c == 3 ? "Level" : c == 4 ? "Class" : "Related"
+        table.cell(v2dTable, c, 2, heading, text_color=color.silver, text_size=size.tiny)
     for row = 3 to 10
         for c = 0 to 5
             table.cell(v2dTable, c, row, "", text_size=size.tiny)
@@ -3239,7 +3239,10 @@ if v2dOn and barstate.islast and not na(v2dTable)
                 gapClasses.push("LEGACY_ONLY")
                 gapNotes.push(note)
 
-        table.cell(v2dTable, 0, 1, "From " + str.tostring(cutoff), text_color=color.silver, text_size=size.tiny)
+        // The cutoff is an overlapping retained-history bound, not necessarily
+        // the whole user-selected lookback if either registry truncated early.
+        string windowFrom = str.format_time(time[bar_index - cutoff], "MM-dd HH:mm", "UTC")
+        table.cell(v2dTable, 0, 1, "From " + windowFrom, text_color=color.silver, text_size=size.tiny)
         table.cell(v2dTable, 1, 1, "EXACT " + str.tostring(nExact), text_color=color.lime, text_size=size.tiny)
         table.cell(v2dTable, 2, 1, "LEVEL " + str.tostring(nLevel), text_color=color.orange, text_size=size.tiny)
         table.cell(v2dTable, 3, 1, "TIME " + str.tostring(nTime), text_color=color.orange, text_size=size.tiny)
