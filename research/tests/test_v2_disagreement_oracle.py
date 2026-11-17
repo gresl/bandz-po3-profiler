@@ -43,6 +43,16 @@ class DisagreementAuditTests(unittest.TestCase):
         self.assertEqual([x.category for x in out].count("EXACT"),1)
         self.assertEqual([x.category for x in out].count("V2_ONLY"),1)
 
+    def test_same_bar_with_conflicting_timestamps_is_drift(self):
+        v = Signal(20, "BULL", 1.32606, "CONFIRMED", 1794468600)
+        l = Signal(20, "BULL", 1.32606, "CONFIRMED", 1794469500)
+        self.assertEqual([x.category for x in compare([v], [l])], ["STAMP_DIFF"])
+
+    def test_matching_stored_timestamps_is_exact(self):
+        v = Signal(20, "BULL", 1.32606, "CONFIRMED", 1794468600)
+        l = Signal(20, "BULL", 1.32606, "CONFIRMED", 1794468600)
+        self.assertEqual([x.category for x in compare([v], [l])], ["EXACT"])
+
     def test_window_cutoff_excludes_old_events(self):
         out=compare([e(10,"BEAR",1.33000),e(20,"BULL",1.32606)],
                     [e(10,"BEAR",1.33000),e(20,"BULL",1.32606)],cutoff=15)
