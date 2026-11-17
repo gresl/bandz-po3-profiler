@@ -87,3 +87,13 @@ Audit-only fix committed after the screenshots:
 The update needs fresh Pine compilation and one paired screenshot (top-right comparison + bottom-right fixed audit), ideally first **after an F5 reload at the existing Replay endpoint**, then one more after stepping Replay forward from before the 07:30 close. Do not infer an actual missed close from a single historical drawing disappearance.
 
 The **next research disagreement fixture**, after timestamp consistency is proven, is `V2_ONLY` bearish event on Nov 12 **02:30 UTC** near **1.32765**. Its mechanical classification is not evidence of signal quality; compare independent Cephxs and original legacy history at that exact time before changing candidate rules.
+
+## Replay UI clarification — November 17 18:01–18:03 UTC
+
+After replacing the Pine code and using F5 / Replay bar stepping, user supplied two screenshots showing the **legacy BULL November 12, 2026 07:30 UTC, level 1.32606** alongside the V2 event registry. V2 table explicitly contains `BULL | 1.32606 | known 11-12 07:30 | confirm 11-12 07:30 | CONFIRMED`. The legacy fixed NY close selector `2026-11-12 02:30` shows the same direction, time and level. The top-right discrepancy panel reports `EXACT 8 / LEVEL 0 / TIME 0 / V2only 6 / Lonly 0 / STAMP 0`, with `END OPEN` and endpoint close `11-12 07:45`.
+
+**Interpretation of missing V2 horizontal line:** This is NOT a missing confirmation. Phase 1 code plots only pending reference levels (`v2rPendingBull`, `v2rPendingBear`) and **confirmation plotshape triangles** (`v2rNewBull`, `v2rNewBear`), plus the event registry. V2 pending lines disappear on confirmation; unlike legacy Bandz, no persistent confirmed-V2 line is drawn. A cyan V2 upward marker appears beneath the corresponding confirmation candle. Audit result is consistent with code.
+
+The current "END OPEN" status means the 07:45 endpoint candle is not itself confirmed; the earlier 07:30 event is stored and is stable within this screenshot. Exact matching and STAMP0 are evidence limited to the bounded overlapping history, not global detector accuracy or proof of replay deterministic equivalence.
+
+**Phase 2 recommendation:** Before changing detection thresholds, optionally add an **independent, OFF-by-default confirmed-V2 line visualization** anchored at actual confirmation candle (not originating pivot) with a bounded number of lines and explicit UTC close marker. This is a display feature only. Next investigate the earliest nontrivial `V2_ONLY` BEAR (2026-11-12 02:30 UTC, roughly 1.32765) with unmodified filters and compare Cephxs reference, not merely the presence/absence of horizontal lines.
