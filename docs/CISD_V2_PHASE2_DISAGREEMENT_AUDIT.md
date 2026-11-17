@@ -66,3 +66,24 @@ The new `research/tests/test_v2_disagreement_oracle.py` contains ten synthetic c
 ## Acceptance / merge gate
 
 Keep this branch and its draft PR **unmerged** until native Pine compile, repeatable Replay output and one verified disagreement classification pass. Do not merge purely because synthetic tests pass.
+
+## Replay consistency investigation — November 17, 2026
+
+Three GBPUSD 15m Replay screenshots compared:
+
+- After enabling Phase 2 comparison, the legacy fixed NY `2026-11-12 02:30` event was initially visible in the Settings-open chart.
+- After closing Settings, the *fixed legacy audit panel* said `NOT FOUND in retained history`, and its chart-side research line disappeared.
+- Returning Replay to before 07:00 UTC and stepping forward to 07:45 restored the exact BULL event at **2026-11-12 07:30 UTC, level 1.32606**.
+- The V2 vs legacy table remained `EXACT 7 / LEVEL 0 / TIME 0 / V2_ONLY 6 / LEGACY_ONLY 0` in both latter screenshots. Its first difference row was `BEAR V2_ONLY` at **2026-11-12 02:30 UTC**, level around 1.32765.
+
+Important methodological finding: prior Phase 2 `EXACT` used only confirmation **bar index**, direction and level, whereas the fixed legacy audit searches the event's recorded **confirmation timestamp** formatted as NY civil time. This can conceal a timestamp discrepancy, and the panel itself may also be stale at certain Replay endpoints. We have NOT established which scenario caused the observed difference.
+
+Audit-only fix committed after the screenshots:
+1. `EXACT` and `LEVEL_DIFF` now additionally require equal stored **close timestamps**.
+2. Same bar index but mismatched stored close timestamps (with nearby level) becomes `STAMP_DIFF` and increments `STAMP N` on the top-right panel.
+3. Top-right header reports whether Replay's last chart bar is currently `END OPEN` or `END CLOSED`, alongside its UTC close time.
+4. Neither legacy nor V2 detector, candidate state, alert, plotting geometry or Po3 qualification is altered.
+
+The update needs fresh Pine compilation and one paired screenshot (top-right comparison + bottom-right fixed audit), ideally first **after an F5 reload at the existing Replay endpoint**, then one more after stepping Replay forward from before the 07:30 close. Do not infer an actual missed close from a single historical drawing disappearance.
+
+The **next research disagreement fixture**, after timestamp consistency is proven, is `V2_ONLY` bearish event on Nov 12 **02:30 UTC** near **1.32765**. Its mechanical classification is not evidence of signal quality; compare independent Cephxs and original legacy history at that exact time before changing candidate rules.
