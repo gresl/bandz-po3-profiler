@@ -12,6 +12,7 @@ class Signal:
     direction: str
     level: float
     state: str = "CONFIRMED"
+    close_ts: Optional[int] = None
 
 @dataclass(frozen=True)
 class Diff:
@@ -33,7 +34,7 @@ def compare(v2: list[Signal], legacy: list[Signal], *, cutoff: int = 0,
     used_v: set[int] = set()
     used_l: set[int] = set()
     results: list[Diff] = []
-    for phase in (0, 1):
+    for phase in (0, 1, 2):
         for i, v in enumerate(v2):
             if i in used_v:
                 continue
@@ -43,7 +44,8 @@ def compare(v2: list[Signal], legacy: list[Signal], *, cutoff: int = 0,
                     continue
                 time_gap = abs(v.close_bar-l.close_bar)
                 level_ticks = abs(v.level-l.level)/tick
-                eligible = time_gap == 0 if phase == 0 else (time_gap == 1 and level_ticks <= near_ticks+1e-7)
+                same_stamp = v.close_ts == l.close_ts if (v.close_ts is not None and l.close_ts is not None) else True
+                eligible = (time_gap == 0 and same_stamp) if phase == 0 else ((time_gap == 0 and not same_stamp and level_ticks <= near_ticks+1e-7) if phase == 1 else (time_gap == 1 and level_ticks <= near_ticks+1e-7))
                 if eligible:
                     choices.append((level_ticks, j))
             if choices:
@@ -51,8 +53,10 @@ def compare(v2: list[Signal], legacy: list[Signal], *, cutoff: int = 0,
                 l = legacy[j]
                 used_v.add(i)
                 used_l.add(j)
-                if phase == 1:
+                if phase == 2:
                     category = "TIME_DIFF"
+                elif phase == 1:
+                    category = "STAMP_DIFF"
                 elif abs(v.level - l.level) <= (same_ticks+1e-7)*tick:
                     category = "EXACT"
                 else:
