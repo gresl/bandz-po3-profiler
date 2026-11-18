@@ -68,3 +68,31 @@ Next root-cause investigation: isolate why legacy raw run-based logic does not c
 Bandz legacy raw engine (see `Bandz_Po3_Profiler.pine`, around lines 1524–1570 on this branch) requires for bearish events: a red closing candle, an earlier saved **bullish-run length >= `poCisdMinRun` (configured 2)**, a close below the first run's open in Standard mode, age <=60 bars and no existing same-bar CISD. V2 instead uses pivot-seeded opposing-run candidates with **`v2rMinRun=1`**, ATR stretch gate 0.5 and separate pivot-extreme invalidation. The source-level **most economical hypothesis** is that the reference run that spawned the Cephxs/V2 02:30 close had only one qualifying bullish candle under the legacy run accounting, or a differing level; other run/reset and duplicate-bar guards remain possible.
 
 The image alone does not yield an exact independently verifiable OHLC array or legacy internal run-state values, so no particular failed predicate should be stated as fact. Next prefer read-only C6-style probe at fixed 02:30 UTC to print legacy bullish-run length and first-run-open, duplicate-bar/age guards, V2 pivot/level and then a side-by-side rule diagnosis. Do not alter the raw detection threshold merely to make this case match.
+
+## Proven legacy skip — 2026-11-18 18:55 UTC screenshot
+
+The user ran the Phase 2B `4D · Legacy CISD Skip Diagnostics` branch on `FOREXCOM:GBPUSD` 15m through the target close and supplied a screenshot created 2026-11-18 at 18:55 UTC. This is **actual Pine gate-state evidence captured on the target closed bar**, not inferred OHLC from the image.
+
+| Legacy diagnostic | Recorded |
+|---|---|
+| Target | Bearish / 2026-11-11 21:30 New York |
+| Captured closed time | 2026-11-12 **02:30 UTC** |
+| Legacy configuration | Standard / **MinRun 2** |
+| Opposing bullish-run length | **1** candle |
+| Opposing run age | **3** bars |
+| First and last run OPEN | **1.32745 / 1.32745** |
+| Selected legacy reference | **1.32745** |
+| Candle bearish | PASS |
+| Reference exists | PASS |
+| Minimum run | **FAIL** |
+| Close below reference | PASS |
+| Age <=60 | PASS |
+| Duplicate-event guard | PASS |
+| Actual legacy signal | **NOT CONFIRMED** |
+| First failed predicate | **MIN_RUN** |
+| V2 same-candle confirmed level | **1.32745** |
+| V2 opposing stretch/ATR | **0.90** |
+
+The diagnostic panel explicitly marks all five other gates PASS. It is **proven** that legacy Bandz's configured two-candle minimum excludes this event; another run reference, duplicate suppression or missing close-through condition does **not** explain the skip in this recorded snapshot. V2 and isolated Cephxs previously agreed on the level and first observed 02:30 UTC completed-bar appearance.
+
+**Decision:** Freeze this as positive mechanical parity evidence. Do **not** globally set legacy MinRun=1 from this example. Retain the original legacy detector for A/B comparison. Before changing V2's candidate acceptance rules, gather a negative control of a V2_ONLY event where Cephxs shows no corresponding confirmed CISD, then compare the same pivot/stretch predicates. An engine with more signals is not necessarily an engine with higher-quality signals. The next experiment should evaluate candidate construction and false positives, not optimize for the subsequent price decline.
