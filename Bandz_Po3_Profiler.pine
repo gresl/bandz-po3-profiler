@@ -46,6 +46,7 @@ const string PO_G6  = "3 · Po3 profile (C1-C4)"
 const string PO_G8  = "4 · CISD + STDV"
 const string PO_G8B = "4B · CISD structural research"
 const string PO_G8C = "4C · CISD V2 pivot research (experimental)"
+const string PO_G8D = "4D · Legacy CISD skip diagnostics (opt-in)"
 const string PO_G3  = "5 · SMT / SSMT"
 const string PO_GP  = "6 · PSP"
 const string PO_G4  = "7 · HTF candles"
@@ -187,6 +188,14 @@ bool v2dOn = input.bool(false, "V2 audit: compare legacy vs V2", group=PO_G8C,
 int v2dBars = input.int(96, "V2 audit: maximum comparison bars", minval=24, maxval=384, group=PO_G8C)
 int v2dSameTicks = input.int(3, "V2 audit: same-level tolerance (ticks)", minval=0, maxval=30, group=PO_G8C)
 int v2dNearTicks = input.int(20, "V2 audit: near-time tolerance (ticks)", minval=1, maxval=100, group=PO_G8C)
+
+// Phase 2B: forensic snapshot of one historical LEGACY detection decision at
+// its real closing bar. Does not modify thresholds, flags or recorded events.
+bool v2SkipOn = input.bool(false, "Skip audit: capture one legacy close", group=PO_G8D, tooltip="Records the legacy CISD predicates AT the selected chart bar close, before run-state resets. Read-only.")
+string v2SkipFixedNy = input.string("2026-11-11 21:30", "Skip audit: target close NY", group=PO_G8D, tooltip="Exact candle CLOSE in America/New_York, YYYY-MM-DD HH:mm. 2026-11-11 21:30 NY = 2026-11-12 02:30 UTC.")
+string v2SkipSide = input.string("Bearish", "Skip audit: target side", options=["Bearish", "Bullish"], group=PO_G8D)
+bool v2SkipPanel = input.bool(true, "Skip audit: show snapshot (middle left)", group=PO_G8D)
+
 
 
 bool   poStdvOn        = po3ShowStdv
@@ -1521,6 +1530,29 @@ poSpotZone(PoRec rc, int which) =>
         b := rc.c2Open + (rc.c2Wick - rc.c2Open) * (which == 3 ? poT50 : poT25) / 100.0
     [math.max(a, b), math.min(a, b)]
 
+// Freeze a single targeted legacy decision on the exact CONFIRMED chart close.
+// The values below are captured before the legacy trigger clears its run state.
+var bool v2SkipSeen = false
+var int v2SkipAtBar = na
+var int v2SkipAtTime = na
+var float v2SkipBarOpen = na
+var float v2SkipBarClose = na
+var int v2SkipRunLenSeen = na
+var int v2SkipRunStartSeen = na
+var int v2SkipRunAgeSeen = na
+var float v2SkipRunFirstSeen = na
+var float v2SkipRunLastSeen = na
+var float v2SkipLevelSeen = na
+var bool v2SkipDirectionOk = false
+var bool v2SkipLevelOk = false
+var bool v2SkipLengthOk = false
+var bool v2SkipBreakOk = false
+var bool v2SkipAgeOk = false
+var bool v2SkipUniqueOk = false
+var bool v2SkipFired = false
+bool v2SkipTarget = v2SkipOn and barstate.isconfirmed and
+     not na(time_close) and str.format_time(time_close, "yyyy-MM-dd HH:mm", "America/New_York") == v2SkipFixedNy
+
 bool  poCisdNewBull = false
 bool  poCisdNewBear = false
 if poCalc
@@ -1543,6 +1575,24 @@ if poCalc
     if poCisdFilterInv
         poCisdInvalidate()
     float poBearLvl = poCisdSens == "Sensitive" ? poBearRunLast : poBearRunFirst
+    if v2SkipTarget and v2SkipSide == "Bullish"
+        v2SkipSeen := true
+        v2SkipAtBar := bar_index
+        v2SkipAtTime := time_close
+        v2SkipBarOpen := open
+        v2SkipBarClose := close
+        v2SkipRunLenSeen := poBearRunLen
+        v2SkipRunStartSeen := poBearRunBar
+        v2SkipRunAgeSeen := na(poBearRunBar) ? na : bar_index - poBearRunBar
+        v2SkipRunFirstSeen := poBearRunFirst
+        v2SkipRunLastSeen := poBearRunLast
+        v2SkipLevelSeen := poBearLvl
+        v2SkipDirectionOk := close > open
+        v2SkipLevelOk := not na(poBearLvl)
+        v2SkipLengthOk := poBearRunLen >= poCisdMinRun
+        v2SkipBreakOk := not na(poBearLvl) and close > poBearLvl
+        v2SkipAgeOk := not na(poBearRunBar) and bar_index - poBearRunBar <= 60
+        v2SkipUniqueOk := not poCisdOnBar(true)
     if close > open and not na(poBearLvl) and poBearRunLen >= poCisdMinRun and close > poBearLvl and bar_index - poBearRunBar <= 60 and not poCisdOnBar(true)
         PoCisd cb = PoCisd.new()
         cb.bull := true
@@ -1555,6 +1605,24 @@ if poCalc
         poBearRunLast := na
         poBearRunLen := 0
     float poBullLvl = poCisdSens == "Sensitive" ? poBullRunLast : poBullRunFirst
+    if v2SkipTarget and v2SkipSide == "Bearish"
+        v2SkipSeen := true
+        v2SkipAtBar := bar_index
+        v2SkipAtTime := time_close
+        v2SkipBarOpen := open
+        v2SkipBarClose := close
+        v2SkipRunLenSeen := poBullRunLen
+        v2SkipRunStartSeen := poBullRunBar
+        v2SkipRunAgeSeen := na(poBullRunBar) ? na : bar_index - poBullRunBar
+        v2SkipRunFirstSeen := poBullRunFirst
+        v2SkipRunLastSeen := poBullRunLast
+        v2SkipLevelSeen := poBullLvl
+        v2SkipDirectionOk := close < open
+        v2SkipLevelOk := not na(poBullLvl)
+        v2SkipLengthOk := poBullRunLen >= poCisdMinRun
+        v2SkipBreakOk := not na(poBullLvl) and close < poBullLvl
+        v2SkipAgeOk := not na(poBullRunBar) and bar_index - poBullRunBar <= 60
+        v2SkipUniqueOk := not poCisdOnBar(false)
     if close < open and not na(poBullLvl) and poBullRunLen >= poCisdMinRun and close < poBullLvl and bar_index - poBullRunBar <= 60 and not poCisdOnBar(false)
         PoCisd cr = PoCisd.new()
         cr.bull := false
@@ -1568,6 +1636,9 @@ if poCalc
         poBullRunLen := 0
     while poCisds.size() > poCisdMax
         poCisds.shift()
+    if v2SkipTarget
+        // Only the targeted direction's production flag is captured.
+        v2SkipFired := v2SkipSide == "Bearish" ? poCisdNewBear : poCisdNewBull
 
 // Which CISD slot feeds the sequence: 0 chart, 1 = 3m, 2 = 5m (falls back to the chart when the
 // chart timeframe is not below the chosen one).
@@ -3270,3 +3341,62 @@ if v2dOn and barstate.islast and not na(v2dTable)
                 table.cell(v2dTable, 3, row + 3, gapLevels.get(g), text_color=fg, text_size=size.tiny)
                 table.cell(v2dTable, 4, row + 3, cls, text_color=fg, text_size=size.tiny)
                 table.cell(v2dTable, 5, row + 3, gapNotes.get(g), text_color=color.silver, text_size=size.tiny)
+
+
+// =============================================================================
+// PHASE 2B: SINGLE BAR FORENSIC LEGACY SKIP SNAPSHOT (strictly read-only)
+// Created only when opted in; table is positioned away from existing V2 /
+// disagreement / legacy event-audit panels. All evidence is stored at candle
+// CLOSE, before the legacy run state is reset by any matching confirmation.
+// =============================================================================
+var table v2SkipTable = v2SkipOn and v2SkipPanel ?
+     table.new(position.middle_left, 1, 1, bgcolor=color.new(color.black, 10)) : na
+if v2SkipOn and v2SkipPanel and barstate.islast and not na(v2SkipTable)
+    string diag = "LEGACY CISD SKIP — CLOSED-BAR SNAPSHOT"
+    diag += "\nTarget: " + v2SkipSide + " / NY " + v2SkipFixedNy
+    diag += "\nFeed: " + syminfo.tickerid + " / TF " + timeframe.period
+    if not v2SkipSeen
+        diag += "\nNOT CAPTURED — move Replay AFTER target close."
+        diag += "\nCheck NY time, symbol, timeframe and loaded history."
+    else
+        string ts = str.format_time(v2SkipAtTime, "yyyy-MM-dd HH:mm", "UTC")
+        string gateReason = not v2SkipDirectionOk ? "CANDLE_COLOR" :
+             not v2SkipLevelOk ? "NO_REFERENCE_LEVEL" :
+             not v2SkipLengthOk ? "MIN_RUN" :
+             not v2SkipBreakOk ? "NO_CLOSE_THROUGH" :
+             not v2SkipAgeOk ? "RUN_TOO_OLD" :
+             not v2SkipUniqueOk ? "ALREADY_ON_BAR" :
+             v2SkipFired ? "CONFIRMED" : "UNEXPECTED_NO_EVENT"
+        string fmtFirst = na(v2SkipRunFirstSeen) ? "n/a" : str.tostring(v2SkipRunFirstSeen, format.mintick)
+        string fmtLast = na(v2SkipRunLastSeen) ? "n/a" : str.tostring(v2SkipRunLastSeen, format.mintick)
+        string fmtLevel = na(v2SkipLevelSeen) ? "n/a" : str.tostring(v2SkipLevelSeen, format.mintick)
+        string fmtAge = na(v2SkipRunAgeSeen) ? "n/a" : str.tostring(v2SkipRunAgeSeen)
+        diag += "\nCaptured UTC close: " + ts + " / bar " + str.tostring(v2SkipAtBar)
+        diag += "\nCandle open/close: " + str.tostring(v2SkipBarOpen, format.mintick) + " / " + str.tostring(v2SkipBarClose, format.mintick)
+        diag += "\nLegacy mode: " + poCisdSens + ", min run " + str.tostring(poCisdMinRun)
+        diag += "\nOpposing run len / age: " + str.tostring(v2SkipRunLenSeen) + " / " + fmtAge + " bars"
+        diag += "\nFirst / last OPEN: " + fmtFirst + " / " + fmtLast
+        diag += "\nSelected level: " + fmtLevel
+        diag += "\nGate: correct candle color " + (v2SkipDirectionOk ? "PASS" : "FAIL")
+        diag += "\nGate: level available " + (v2SkipLevelOk ? "PASS" : "FAIL")
+        diag += "\nGate: min run " + (v2SkipLengthOk ? "PASS" : "FAIL")
+        diag += "\nGate: close through level " + (v2SkipBreakOk ? "PASS" : "FAIL")
+        diag += "\nGate: age <=60 " + (v2SkipAgeOk ? "PASS" : "FAIL")
+        diag += "\nGate: not duplicate bar " + (v2SkipUniqueOk ? "PASS" : "FAIL")
+        diag += "\nActual legacy event: " + (v2SkipFired ? "CONFIRMED" : "NOT CONFIRMED")
+        diag += "\nFirst failed predicate: " + gateReason
+        bool v2Found = false
+        if v2rOn and v2rEvents.size() > 0
+            for i = 0 to v2rEvents.size() - 1
+                PoV2PivotEvent ev = v2rEvents.get(i)
+                bool sameSide = ev.bull == (v2SkipSide == "Bullish")
+                if sameSide and (ev.state == 1 or ev.state == 2) and ev.confirmAt == v2SkipAtTime
+                    v2Found := true
+                    diag += "\nV2 confirmed level: " + str.tostring(ev.level, format.mintick)
+                    diag += "\nV2 pivot / born bar: " + str.tostring(ev.pivotBar) + " / " + str.tostring(ev.bornBar)
+                    diag += "\nV2 opposing stretch/ATR: " + str.tostring(ev.stretchAtr, "#.00")
+        if not v2Found
+            diag += "\nV2 same close: NOT IN RETAINED REGISTRY"
+        diag += "\nSnapshot is diagnostic only; no signal change."
+    table.cell(v2SkipTable, 0, 0, diag, text_color=color.white, text_size=size.tiny,
+         text_halign=text.align_left)
