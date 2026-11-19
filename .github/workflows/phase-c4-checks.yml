@@ -7,6 +7,7 @@ on:
       - experiment/cisd-v2-pivot-lifecycle-20261115
       - experiment/cisd-v2-disagreement-audit-20261117
       - experiment/cisd-v2-legacy-skip-diagnostics-20261118
+      - experiment/cisd-v2-batch-export-20261119
   pull_request:
     paths:
       - "research/**"
@@ -24,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile research tools
-        run: python3 -m py_compile research/validate_cisd_sample.py research/analyze_cisd_sample.py research/tests/test_cisd_analysis.py research/cisd_v2_oracle.py research/tests/test_v2_pivot_oracle.py research/cisd_v2_disagreement_oracle.py research/tests/test_v2_disagreement_oracle.py research/cisd_legacy_skip_oracle.py research/tests/test_legacy_skip_oracle.py
+        run: python3 -m py_compile research/validate_cisd_sample.py research/analyze_cisd_sample.py research/tests/test_cisd_analysis.py research/cisd_v2_oracle.py research/tests/test_v2_pivot_oracle.py research/cisd_v2_disagreement_oracle.py research/tests/test_v2_disagreement_oracle.py research/cisd_legacy_skip_oracle.py research/tests/test_legacy_skip_oracle.py research/analyze_cisd_batch.py research/tests/test_cisd_batch_export.py
       - name: Synthetic research tests
         run: python3 -m unittest discover -s research/tests -v
       - name: Validate and analyze empty canonical manifest
