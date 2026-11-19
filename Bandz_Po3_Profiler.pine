@@ -47,6 +47,7 @@ const string PO_G8  = "4 · CISD + STDV"
 const string PO_G8B = "4B · CISD structural research"
 const string PO_G8C = "4C · CISD V2 pivot research (experimental)"
 const string PO_G8D = "4D · Legacy CISD skip diagnostics (opt-in)"
+const string PO_G8E = "4E · Research batch CSV export (opt-in)"
 const string PO_G3  = "5 · SMT / SSMT"
 const string PO_GP  = "6 · PSP"
 const string PO_G4  = "7 · HTF candles"
@@ -195,6 +196,9 @@ bool v2SkipOn = input.bool(false, "Skip audit: capture one legacy close", group=
 string v2SkipFixedNy = input.string("2026-11-11 21:30", "Skip audit: target close NY", group=PO_G8D, tooltip="Exact candle CLOSE in America/New_York, YYYY-MM-DD HH:mm. 2026-11-11 21:30 NY = 2026-11-12 02:30 UTC.")
 string v2SkipSide = input.string("Bearish", "Skip audit: target side", options=["Bearish", "Bullish"], group=PO_G8D)
 bool v2SkipPanel = input.bool(true, "Skip audit: show snapshot (middle left)", group=PO_G8D)
+// Data Window plots are picked up by TradingView Export chart data -> CSV.
+// All fields are confirmed-close only and NA between signals; off by default.
+bool v2BatchExportOn = input.bool(false, "Export: numeric event columns in CSV", group=PO_G8E, tooltip="Adds Data Window-only series to chart CSV export. Does not change detections or drawings. Keep chart timezone UTC during export.")
 
 
 
@@ -3400,3 +3404,67 @@ if v2SkipOn and v2SkipPanel and barstate.islast and not na(v2SkipTable)
         diag += "\nSnapshot is diagnostic only; no signal change."
     table.cell(v2SkipTable, 0, 0, diag, text_color=color.white, text_size=size.tiny,
          text_halign=text.align_left)
+
+
+// =============================================================================
+// PHASE 2C: CONFIRMED-CLOSE NUMERIC CSV EXPORT — NO DETECTOR/ALERT CHANGES.
+// Official TradingView "Export chart data" includes Data Window plot columns.
+// Exactly one chart row per bar, not one row per candidate. Candidate-count
+// columns detect V2 collisions (more than one same-side level on one bar).
+// Export values are set only at the real confirmation close; never backfill.
+// =============================================================================
+float exV2Bull = na
+float exV2Bear = na
+float exLegacyBull = na
+float exLegacyBear = na
+float exV2BullAtr = na
+float exV2BearAtr = na
+float exV2BullPivot = na
+float exV2BearPivot = na
+float exV2BullCount = na
+float exV2BearCount = na
+
+if v2BatchExportOn and barstate.isconfirmed
+    if poCisdEvents.size() > 0
+        for ei = poCisdEvents.size() - 1 to 0
+            PoCisdEvent le = poCisdEvents.get(ei)
+            if le.confirmBar == bar_index and le.confirmTime == time_close
+                if le.bull
+                    exLegacyBull := le.level
+                else
+                    exLegacyBear := le.level
+    if v2rOn and v2rEvents.size() > 0
+        int nBullOnBar = 0
+        int nBearOnBar = 0
+        for vi = 0 to v2rEvents.size() - 1
+            PoV2PivotEvent ve = v2rEvents.get(vi)
+            bool confirmed = ve.state == 1 or ve.state == 2
+            if confirmed and ve.confirmBar == bar_index and ve.confirmAt == time_close
+                if ve.bull
+                    nBullOnBar += 1
+                    if na(exV2Bull)
+                        exV2Bull := ve.level
+                        exV2BullAtr := ve.stretchAtr
+                        exV2BullPivot := ve.pivotBar
+                else
+                    nBearOnBar += 1
+                    if na(exV2Bear)
+                        exV2Bear := ve.level
+                        exV2BearAtr := ve.stretchAtr
+                        exV2BearPivot := ve.pivotBar
+        exV2BullCount := nBullOnBar > 0 ? nBullOnBar : na
+        exV2BearCount := nBearOnBar > 0 ? nBearOnBar : na
+
+// Hidden from chart and price scale, present in chart-data CSV.
+// Open-time is the exported chart's Time; event confirmation is time_close.
+// The plot titles below form a stable, machine-readable CSV schema.
+plot(exV2Bull, title="CISDEXP_V2_BULL_LEVEL", display=display.data_window)
+plot(exV2Bear, title="CISDEXP_V2_BEAR_LEVEL", display=display.data_window)
+plot(exLegacyBull, title="CISDEXP_LEGACY_BULL_LEVEL", display=display.data_window)
+plot(exLegacyBear, title="CISDEXP_LEGACY_BEAR_LEVEL", display=display.data_window)
+plot(exV2BullAtr, title="CISDEXP_V2_BULL_STRETCH_ATR", display=display.data_window)
+plot(exV2BearAtr, title="CISDEXP_V2_BEAR_STRETCH_ATR", display=display.data_window)
+plot(exV2BullPivot, title="CISDEXP_V2_BULL_PIVOT_BAR", display=display.data_window)
+plot(exV2BearPivot, title="CISDEXP_V2_BEAR_PIVOT_BAR", display=display.data_window)
+plot(exV2BullCount, title="CISDEXP_V2_BULL_COUNT", display=display.data_window)
+plot(exV2BearCount, title="CISDEXP_V2_BEAR_COUNT", display=display.data_window)
