@@ -1,0 +1,28 @@
+name: Bandz V2 visual-test preservation
+
+on:
+  push:
+    branches:
+      - feature/bandz-po3-v2-visual-test-20261120
+    paths:
+      - 'indicators/Bandz_Po3_V2_Visual_Test.pine'
+      - 'indicators/Bandz_Po3_Full_V2_Integrated.pine'
+      - 'research/tests/test_visual_test_settings.py'
+      - '.github/workflows/bandz-v2-visual-test.yml'
+  pull_request:
+    paths:
+      - 'indicators/Bandz_Po3_V2_Visual_Test.pine'
+      - 'indicators/Bandz_Po3_Full_V2_Integrated.pine'
+      - 'research/tests/test_visual_test_settings.py'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-visual-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify full Bandz engine preserved and research settings cleaned
+        run: python3 -m unittest discover -s research/tests -p test_visual_test_settings.py -v
