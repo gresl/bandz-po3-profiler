@@ -43,7 +43,7 @@ Detection code is unchanged. ON and ATR ON input *defaults* are deliberate chart
 | Keep invalidated levels, faded/dotted | ON |
 | Show price labels | OFF |
 | Display bullish and bearish | Both ON |
-| Historical line start | Confirmation candle |
+| Historical line start | Opposing stretch origin (corrected Nov 20) |
 | Max confirmed lines | 60 |
 | Confirmed line duration | 20 chart bars |
 | Line width | 2 |
@@ -51,7 +51,7 @@ Detection code is unchanged. ON and ATR ON input *defaults* are deliberate chart
 | Pending/invalidated transparency | 50 / 75 |
 | Optional 8-event status registry | OFF |
 
-Optional line start = Opposing stretch origin draws a *back-anchored historical annotation* only when a signal CONFIRMS. It does **not** imply an earlier actionable or knowable signal.
+The default line start is now Opposing stretch origin, using the first opposing-stretch candle's OPEN (event originBar) to show where the V2 level comes from. This fixes the left-side displacement of the clean indicator relative to the original Bandz research presentation. It is a back-anchored historical annotation **created only when the CISD confirms**, never evidence that the confirmation was available at the origin. Selecting Confirmation instead shows only the signal-forward line.
 
 The frozen engine retains its last 80 candidates (including rejected and expired); displayed lines have their own limit. Absence of a historical line does not prove an event was absent.
 
@@ -76,3 +76,7 @@ After compilation these are separate Create Alert conditions. Configure Once Per
 ## Preserved source and tests
 
 The frozen core sits between the type PoV2PivotEvent declaration and the float v2rPendingBull declaration, exactly as in the old full Bandz script. Candidate birth, pivot confirmation, opposing-run selection, ATR filter, expiry, breach, supersession, invalidation and confirmation flags are unchanged. Only input defaults, display objects, compact optional registry, and alertcondition outputs were added. The source-integrity CI tests are static and must be followed by one manual TradingView compilation.
+
+## Nov 20 visual anchor correction
+
+A side-by-side comparison of the clean and original Bandz charts showed the *line's left endpoint*, not the reference price level, displaced. This was caused by the first clean indicator defaulting to the confirmation candle while the chart expectation was the originating opposing-stretch candle. Default changed to Opposing stretch origin using the existing frozen V2 event's originBar; **the detector and signals remain unchanged**. Source-identity tests now protect this appearance default. After updating the personal Pine script, save again and overwrite its separate clean indicator template if desired. Existing TradingView indicator instances may preserve the old dropdown setting and will need to be changed manually. No need to redo the 17-event parity study.
