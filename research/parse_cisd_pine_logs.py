@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
+import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,12 +48,33 @@ def _parse_line(text: str) -> dict[str, str]:
         raise ValueError("Unknown kind")
     if data["side"] not in ("BULL", "BEAR"):
         raise ValueError("Unknown side")
+    # In TradingView Bar Replay, syminfo.tickerid can be serialized as an
+    # internal replay envelope rather than the underlying exchange ticker.
+    # Canonicalize for feed matching; do not publish internal replay IDs.
+    if data["symbol"].startswith("={"):
+        try:
+            replay = json.loads(data["symbol"][1:])
+        except json.JSONDecodeError as exc:
+            raise ValueError("Unrecognized replay symbol envelope") from exc
+        ticker = replay.get("symbol") if isinstance(replay, dict) else None
+        if not isinstance(ticker, str) or not ticker:
+            raise ValueError("Replay envelope missing underlying symbol")
+        data["symbol"] = ticker
     close_utc = datetime.fromtimestamp(int(data["close_ms"]) / 1000, timezone.utc)
     data["close_utc"] = close_utc.isoformat()
     data["raw_line"] = text
     return data
 
 def parse_logs(text: str) -> tuple[list[dict[str, str]], list[str]]:
+    # TradingView's Pine Logs panel exports a two-column Date,Message CSV.
+    # Parse that format as CSV first so quoted replay-symbol JSON survives
+    # double-quote escaping. Pasted plain logs remain supported.
+    first = text.lstrip("\\ufeff\\r\\n ").splitlines()[0] if text.strip() else ""
+    if first.replace(" ", "").lower() == "date,message":
+        reader = csv.DictReader(io.StringIO(text.lstrip("\\ufeff")))
+        if not {"Date", "Message"}.issubset(reader.fieldnames or []):
+            raise ValueError("Pine Logs CSV needs Date and Message columns")
+        text = "\\n".join((row.get("Message") or "") for row in reader)
     rows: list[dict[str, str]] = []
     notes: list[str] = []
     seen: set[tuple[str, ...]] = set()
@@ -103,7 +126,7 @@ def save_events(path: str | Path, rows: list[dict[str, str]]) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("logs_text", type=Path, help="Pasted Pine Logs text; only CISDEVT1 tagged lines parsed")
+    ap.add_argument("logs_text", type=Path, help="Pine Logs Date,Message CSV or pasted log text; only CISDEVT1 records parsed")
     ap.add_argument("--output-prefix", type=Path, help="Default same path without suffix")
     ap.add_argument("--timeframe-minutes", type=int, default=15)
     ap.add_argument("--tick-size", type=float, default=0.00001)
