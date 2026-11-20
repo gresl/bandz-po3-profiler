@@ -60,6 +60,8 @@ class FrozenEngineTests(unittest.TestCase):
         self.assertIn("line.set_style(ln, line.style_dotted)",self.clean)
         self.assertIn("while drawnLines.size() > historyLines",self.clean)
         self.assertIn("line.delete(drawnLines.shift())",self.clean)
+        self.assertIn('lineStart = input.string("Opposing stretch origin",',self.clean)
+        self.assertIn('lineStart == "Confirmation" ? ev.confirmBar : ev.originBar',self.clean)
         self.assertIn("v2rPanel = input.bool(false,",self.clean)
         self.assertIn("showPending = input.bool(false,",self.clean)
 
