@@ -69,12 +69,12 @@ def parse_logs(text: str) -> tuple[list[dict[str, str]], list[str]]:
     # TradingView's Pine Logs panel exports a two-column Date,Message CSV.
     # Parse that format as CSV first so quoted replay-symbol JSON survives
     # double-quote escaping. Pasted plain logs remain supported.
-    first = text.lstrip("\\ufeff\\r\\n ").splitlines()[0] if text.strip() else ""
+    first = text.lstrip("\ufeff\r\n ").splitlines()[0] if text.strip() else ""
     if first.replace(" ", "").lower() == "date,message":
-        reader = csv.DictReader(io.StringIO(text.lstrip("\\ufeff")))
+        reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
         if not {"Date", "Message"}.issubset(reader.fieldnames or []):
             raise ValueError("Pine Logs CSV needs Date and Message columns")
-        text = "\\n".join((row.get("Message") or "") for row in reader)
+        text = "\n".join((row.get("Message") or "") for row in reader)
     rows: list[dict[str, str]] = []
     notes: list[str] = []
     seen: set[tuple[str, ...]] = set()
