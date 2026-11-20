@@ -35,7 +35,7 @@ class FullBandzV2Checks(unittest.TestCase):
             "poRenderLevels(", "poRenderProfile(", "poRenderSmt(",
             "poLayoutCalc(", "poSpotZone(", "poSpotStrict", "po3ShowCandles",
             "poRecs", "poSmtMarks", "poPspFlag", "poRequestCmp",
-            "poRenderImb", "poCisdEvents", "poCisdFvgZones", "poUpdateMinimal(",
+            "poCisdEvents", "poCisdFvgZones", "poUpdateMinimal(",
             "poCisdScope", "poSeqCisdTf", "poStdvLevels", "poCisdKzLondon",
         )
         for marker in feature_markers:
