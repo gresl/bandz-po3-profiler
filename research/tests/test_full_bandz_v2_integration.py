@@ -77,6 +77,8 @@ class FullBandzV2Checks(unittest.TestCase):
         self.assertIn('poCisdEngine == "Legacy" and poCisdScope == "All"',src)
         self.assertIn('poCisdEngine == "V2" and poCisdScope != "Sequence only"',src)
         self.assertIn("linkedV2 := true",src)
+        self.assertIn('bool poResearchFvgEnabled = poCisdEngine == "Legacy"',src)
+        self.assertIn('var table poCisdQualPanel = poCisdEngine == "Legacy"',src)
         self.assertIn("po3ShowCisd and poCisdScope == "+'"Sequence only"',src)
         self.assertNotIn("request.security(",detector(src))
         self.assertNotIn("lookahead_on",detector(src))
