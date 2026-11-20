@@ -1,0 +1,330 @@
+//@version=6
+// Bandz CISD V2 — CLEAN RESEARCH INDICATOR
+// Derived exclusively from the frozen V2 detector in Bandz Po3 Profiler
+// branch: experiment/cisd-v2-pine-logs-20261120.
+// NOTE: The V2 detector block below is byte-for-byte unchanged.
+// Standalone visuals/alerts are independent and do not feed the detector.
+// Source-level historical Cephxs parity on the frozen FOREXCOM:GBPUSD M15
+// sample: 17 exact common confirmations; this does NOT validate trade outcomes.
+// Work-in-progress PERSONAL indicator; do not publish as a Cephxs derivative.
+indicator("Bandz CISD V2 — Clean Research", shorttitle="Bandz CISD V2", overlay=true,
+     max_bars_back=2500, max_lines_count=250, max_labels_count=150)
+
+const string G_DET = "1 · V2 detector — preserved research settings"
+const string G_VIS = "2 · Chart appearance"
+const string G_COL = "3 · Colors"
+const string G_STATUS = "4 · Optional status"
+
+// V2 core variable identifiers and six pivot/sequence settings are intentionally
+// identical to the historical frozen source. Only the ON / ATR-gate defaults are
+// selected for a usable research chart, matching our audited settings.
+bool  v2rOn       = input.bool(true, "Enable V2 CISD", group=G_DET)
+int   v2rPivotLen = input.int(1, "Confirmed pivot left/right bars", minval=1, maxval=4, group=G_DET)
+int   v2rBridge   = input.int(2, "Bars to find opposing stretch", minval=0, maxval=4, group=G_DET)
+int   v2rScanBars = input.int(12, "Maximum additional stretch bars", minval=1, maxval=30, group=G_DET)
+int   v2rMinRun   = input.int(1, "Minimum opposing stretch candles", minval=1, maxval=10, group=G_DET)
+int   v2rExpiry   = input.int(10, "Candidate expiry bars", minval=1, maxval=40, group=G_DET)
+bool  v2rAtrGate  = input.bool(true, "Require minimum stretch / ATR14", group=G_DET,
+     tooltip="Audited research setting: enabled with 0.5 threshold; not an optimized trade filter.")
+float v2rMinAtr   = input.float(0.5, "Minimum stretch / ATR14", minval=0.05, maxval=5.0, step=0.05, group=G_DET)
+
+// The original V2 had a shared 'plot pending levels and confirmation markers'
+// switch plus a bounded registry. Both remain available; separate view options
+// let users keep the chart readable without touching detector decisions.
+bool v2rLines = input.bool(true, "Enable V2 chart drawings", group=G_VIS)
+bool showMarkers = input.bool(true, "Show confirmation triangles", group=G_VIS)
+bool showPending = input.bool(false, "Show candidate pending levels", group=G_VIS,
+     tooltip="Candidate is not confirmed; it can be invalidated or expire.")
+bool showConfirmed = input.bool(true, "Show confirmed CISD levels", group=G_VIS)
+bool showInvalidated = input.bool(true, "Keep invalidated levels (faded)", group=G_VIS,
+     tooltip="After structural invalidation, retain history as a dotted faded level.")
+bool showLineLabels = input.bool(false, "Show price labels at confirmations", group=G_VIS)
+bool showBull = input.bool(true, "Show bullish signals", group=G_VIS)
+bool showBear = input.bool(true, "Show bearish signals", group=G_VIS)
+string lineStart = input.string("Confirmation", "Historical line begins at", options=["Confirmation", "Opposing stretch origin"], group=G_VIS,
+     tooltip="Origin-anchored historical lines are drawn ONLY at confirmation, not available as real-time signals before that close.")
+int historyLines = input.int(60, "Maximum retained confirmed lines", minval=1, maxval=120, group=G_VIS)
+int lineBars = input.int(20, "Confirmed line duration (bars)", minval=1, maxval=250, group=G_VIS)
+int lineWidth = input.int(2, "Confirmed line width", minval=1, maxval=4, group=G_VIS)
+
+color bullColor = input.color(color.rgb(0, 175, 202), "Bullish", group=G_COL, inline="v2c")
+color bearColor = input.color(color.rgb(242, 137, 36), "Bearish", group=G_COL, inline="v2c")
+int pendingFade = input.int(50, "Pending opacity reduction (%)", minval=0, maxval=95, group=G_COL)
+int invalidFade = input.int(75, "Invalidated opacity reduction (%)", minval=10, maxval=95, group=G_COL)
+
+bool v2rPanel = input.bool(false, "Show recent V2 event registry", group=G_STATUS,
+     tooltip="Optional 8-event status table. No audit panels, snapshot controls, or Pine Logs in this clean indicator.")
+
+// ============================================================================
+// FROZEN DETECTOR — begin exact source extraction
+// No changes to candidate-generation / pivot / stretch / ATR / expiry /
+// closed-bar confirmation or invalidation. Outputs: v2rNewBull/v2rNewBear.
+// ============================================================================
+
+type PoV2PivotEvent
+    bool bull
+    int originBar
+    int pivotBar
+    int bornBar
+    int bornAt
+    float level
+    float extreme
+    float stretchAtr
+    int state
+    int confirmBar
+    int confirmAt
+    float confirmPrice
+    int terminalAt
+    string reason
+
+var array<PoV2PivotEvent> v2rEvents = array.new<PoV2PivotEvent>()
+float v2rPh = ta.pivothigh(high, v2rPivotLen, v2rPivotLen)
+float v2rPl = ta.pivotlow(low, v2rPivotLen, v2rPivotLen)
+float v2rAtr = ta.atr(14)
+
+// Finds a consecutive opposite-direction candle run adjacent to a confirmed pivot.
+// Allows a short bridge of nonmatching candles; the gap is NOT part of the run.
+// Returns history offsets [oldest, most recent], or [na, na] if absent.
+v2rFindStretch(bool bullishCandidate) =>
+    int recentOff = na
+    int oldestOff = na
+    for k = v2rPivotLen to v2rPivotLen + v2rBridge
+        bool opposite = bullishCandidate ? close[k] < open[k] : close[k] > open[k]
+        if opposite and na(recentOff)
+            recentOff := k
+    if not na(recentOff)
+        oldestOff := recentOff
+        for k = recentOff + 1 to recentOff + v2rScanBars
+            bool opposite = bullishCandidate ? close[k] < open[k] : close[k] > open[k]
+            if opposite
+                oldestOff := k
+            else
+                break
+    [oldestOff, recentOff]
+
+// Candidate generation and lifecycle update are NOT used by poLinkCisd, C1/C2,
+// T-Spots, STDV, original CISD display, webhooks or Po3 decisions.
+bool v2rNewBull = false
+bool v2rNewBear = false
+if v2rOn and barstate.isconfirmed
+    int v2rNow = na(time_close) ? time : time_close
+    // Distinct known pivot extremes; no forward-looking bar references.
+    for side = 0 to 1
+        bool bullish = side == 0
+        float pivotPrice = bullish ? v2rPl : v2rPh
+        if not na(pivotPrice)
+            [oldOff, recentOff] = v2rFindStretch(bullish)
+            if not na(oldOff) and not na(recentOff)
+                int n = oldOff - recentOff + 1
+                float startOpen = open[oldOff]
+                float runMovement = math.abs(startOpen - close[recentOff])
+                float magnitudeAtr = not na(v2rAtr) and v2rAtr > 0 ? runMovement / v2rAtr : na
+                bool sizeOk = not v2rAtrGate or (not na(magnitudeAtr) and magnitudeAtr >= v2rMinAtr)
+                if n >= v2rMinRun and sizeOk
+                    // Newest pivot supersedes an earlier PENDING candidate of same side.
+                    if v2rEvents.size() > 0
+                        for i = 0 to v2rEvents.size() - 1
+                            PoV2PivotEvent prior = v2rEvents.get(i)
+                            if prior.state == 0 and prior.bull == bullish
+                                prior.state := 5
+                                prior.terminalAt := v2rNow
+                                prior.reason := "SUPERSEDED"
+                    PoV2PivotEvent created = PoV2PivotEvent.new(
+                         bullish, bar_index - oldOff, bar_index - v2rPivotLen,
+                         bar_index, v2rNow, startOpen, pivotPrice, magnitudeAtr,
+                         0, na, na, na, na, "PENDING")
+                    v2rEvents.push(created)
+    // Confirm, reject or invalidate using only this CLOSED bar's OHLC.
+    // A freshly detected pivot candidate may confirm on this same closing bar;
+    // do not force an additional one-bar delay when evidence already exists.
+    if v2rEvents.size() > 0
+        for i = 0 to v2rEvents.size() - 1
+            PoV2PivotEvent ev = v2rEvents.get(i)
+            if ev.state == 0
+                bool breached = ev.bull ? low < ev.extreme : high > ev.extreme
+                bool timedOut = bar_index - ev.bornBar >= v2rExpiry
+                bool crossed = ev.bull ? close > ev.level : close < ev.level
+                if breached
+                    ev.state := 4
+                    ev.terminalAt := v2rNow
+                    ev.reason := "PIVOT_BREACH"
+                else if timedOut
+                    ev.state := 3
+                    ev.terminalAt := v2rNow
+                    ev.reason := "EXPIRED"
+                else if crossed
+                    ev.state := 1
+                    ev.confirmBar := bar_index
+                    ev.confirmAt := v2rNow
+                    ev.confirmPrice := close
+                    ev.reason := "CONFIRMED"
+                    if ev.bull
+                        v2rNewBull := true
+                    else
+                        v2rNewBear := true
+            else if ev.state == 1 and bar_index > ev.confirmBar
+                bool invalidated = ev.bull ? low < ev.extreme : high > ev.extreme
+                if invalidated
+                    ev.state := 2
+                    ev.terminalAt := v2rNow
+                    ev.reason := "INVALID_AFTER_CONFIRM"
+    // Bounded memory: retain latest 80 historical candidates of all states.
+    while v2rEvents.size() > 80
+        v2rEvents.shift()
+
+// ============================================================================
+// FROZEN DETECTOR — end exact source extraction
+// The rest of this file is display/alert code only.
+// ============================================================================
+
+// Original V2 pending levels: show only the freshest active candidate on each
+// side. Displaying them does not affect any confirmation decisions.
+float v2rPendingBull = na
+float v2rPendingBear = na
+if v2rOn and v2rEvents.size() > 0
+    for i = v2rEvents.size() - 1 to 0
+        PoV2PivotEvent ev = v2rEvents.get(i)
+        if ev.state == 0
+            if ev.bull and na(v2rPendingBull)
+                v2rPendingBull := ev.level
+            if not ev.bull and na(v2rPendingBear)
+                v2rPendingBear := ev.level
+
+plot(v2rOn and v2rLines and showPending and showBull ? v2rPendingBull : na,
+     title="Pending bullish candidate (UNCONFIRMED)", color=color.new(bullColor, pendingFade),
+     linewidth=1, style=plot.style_linebr)
+plot(v2rOn and v2rLines and showPending and showBear ? v2rPendingBear : na,
+     title="Pending bearish candidate (UNCONFIRMED)", color=color.new(bearColor, pendingFade),
+     linewidth=1, style=plot.style_linebr)
+
+// Markers are plotted on their actual confirmation bar, never shifted to the
+// originating historical pivot candle.
+plotshape(v2rOn and v2rLines and showMarkers and showBull and v2rNewBull,
+     title="V2 bullish CONFIRMED at close", location=location.belowbar,
+     style=shape.triangleup, color=bullColor, size=size.tiny, text="V2",
+     textcolor=bullColor)
+plotshape(v2rOn and v2rLines and showMarkers and showBear and v2rNewBear,
+     title="V2 bearish CONFIRMED at close", location=location.abovebar,
+     style=shape.triangledown, color=bearColor, size=size.tiny, text="V2",
+     textcolor=bearColor)
+
+// Bounded drawings: we keep our own references to each confirmed V2 UDT.
+// Line history can fade or disappear when the ORIGINAL V2 engine moves
+// CONFIRMED -> INVALID_AFTER_CONFIRM. A terminal level ceases extending.
+// Once the requested chart-bar duration ends, its right edge stays fixed.
+var array<PoV2PivotEvent> drawnEvents = array.new<PoV2PivotEvent>()
+var array<line> drawnLines = array.new<line>()
+var array<label> drawnLabels = array.new<label>()
+var array<bool> drawnStopped = array.new_bool()
+
+if v2rOn and v2rLines and showConfirmed and barstate.isconfirmed
+    // Update previous drawings only. Stops are based on existing V2 states.
+    if drawnLines.size() > 0
+        for i = drawnLines.size() - 1 to 0
+            PoV2PivotEvent ev = drawnEvents.get(i)
+            line ln = drawnLines.get(i)
+            label lb = drawnLabels.get(i)
+            bool stopped = drawnStopped.get(i)
+            bool invalidated = ev.state == 2
+            if invalidated and not showInvalidated
+                line.delete(ln)
+                if not na(lb)
+                    label.delete(lb)
+                drawnLines.remove(i)
+                drawnLabels.remove(i)
+                drawnEvents.remove(i)
+                drawnStopped.remove(i)
+            else
+                if not stopped
+                    line.set_x2(ln, math.max(line.get_x1(ln) + 1, math.min(bar_index, ev.confirmBar + lineBars)))
+                if invalidated and not stopped
+                    color faded = color.new(ev.bull ? bullColor : bearColor, invalidFade)
+                    line.set_color(ln, faded)
+                    line.set_style(ln, line.style_dotted)
+                    if not na(lb)
+                        label.set_textcolor(lb, faded)
+                    drawnStopped.set(i, true)
+
+    // Create only after the frozen V2 engine has set confirmed CLOSED states.
+    // Iterate all confirmed events of this bar in case more than one confirms.
+    if (v2rNewBull or v2rNewBear) and v2rEvents.size() > 0
+        for i = 0 to v2rEvents.size() - 1
+            PoV2PivotEvent ev = v2rEvents.get(i)
+            bool shownSide = ev.bull ? showBull : showBear
+            if shownSide and ev.state == 1 and ev.confirmBar == bar_index
+                int xStart = lineStart == "Confirmation" ? ev.confirmBar : ev.originBar
+                color col = ev.bull ? bullColor : bearColor
+                line ln = line.new(xStart, ev.level, math.max(xStart + 1, bar_index), ev.level,
+                     xloc=xloc.bar_index, extend=extend.none, color=col,
+                     style=line.style_solid, width=lineWidth)
+                label lb = na
+                if showLineLabels
+                    string sideTxt = ev.bull ? "BULL" : "BEAR"
+                    string tip = "CISD V2 " + sideTxt + " confirmed " +
+                         str.format_time(ev.confirmAt, "yyyy-MM-dd HH:mm", "UTC") +
+                         " UTC\nLevel: " + str.tostring(ev.level, format.mintick)
+                    lb := label.new(bar_index, ev.level,
+                         text=str.tostring(ev.level, format.mintick),
+                         xloc=xloc.bar_index, style=label.style_label_left,
+                         color=color.new(col, 85), textcolor=col, size=size.tiny,
+                         tooltip=tip)
+                drawnEvents.push(ev)
+                drawnLines.push(ln)
+                drawnLabels.push(lb)
+                drawnStopped.push(false)
+        // Delete, do not merely drop references; prevents object-cap clutter.
+        while drawnLines.size() > historyLines
+            line.delete(drawnLines.shift())
+            label oldLab = drawnLabels.shift()
+            if not na(oldLab)
+                label.delete(oldLab)
+            drawnEvents.shift()
+            drawnStopped.shift()
+
+// A small optional registry preserves the informational V2 panel from the
+// original script but does not overlay dense engineering diagnostics by default.
+var table v2rTable = v2rOn and v2rPanel ? table.new(position.top_right, 5, 9,
+     bgcolor=color.new(color.black, 20)) : na
+if v2rOn and v2rPanel and barstate.islast and not na(v2rTable)
+    table.cell(v2rTable, 0, 0, "Side", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 1, 0, "Level", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 2, 0, "First known UTC", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 3, 0, "Confirmed UTC", text_color=color.white, text_size=size.tiny)
+    table.cell(v2rTable, 4, 0, "State", text_color=color.white, text_size=size.tiny)
+    for row = 1 to 8
+        int idx = v2rEvents.size() - row
+        if idx >= 0
+            PoV2PivotEvent ev = v2rEvents.get(idx)
+            string status = ev.state == 0 ? "PENDING" : ev.state == 1 ? "CONFIRMED" : ev.state == 2 ? "INVALIDATED" : ev.state == 3 ? "EXPIRED" : ev.state == 4 ? "REJECTED" : "SUPERSEDED"
+            color fg = ev.state == 1 ? color.lime : ev.state == 0 ? color.yellow : color.silver
+            table.cell(v2rTable, 0, row, ev.bull ? "BULL" : "BEAR", text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 1, row, str.tostring(ev.level, format.mintick), text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 2, row, str.format_time(ev.bornAt, "MM-dd HH:mm", "UTC"), text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 3, row, na(ev.confirmAt) ? "—" : str.format_time(ev.confirmAt, "MM-dd HH:mm", "UTC"), text_color=fg, text_size=size.tiny)
+            table.cell(v2rTable, 4, row, status, text_color=fg, text_size=size.tiny)
+        else
+            for col = 0 to 4
+                table.cell(v2rTable, col, row, "", text_size=size.tiny)
+
+// Signal flags come directly from the original CLOSED-bar detector.
+// Hidden price series allow readable levels in the TradingView alert template.
+// Multiple same-side confirmations on a single bar expose the final level.
+float bullConfirmedLevel = na
+float bearConfirmedLevel = na
+if barstate.isconfirmed and v2rOn and v2rEvents.size() > 0 and (v2rNewBull or v2rNewBear)
+    for i = 0 to v2rEvents.size() - 1
+        PoV2PivotEvent ev = v2rEvents.get(i)
+        if ev.state == 1 and ev.confirmBar == bar_index
+            if ev.bull
+                bullConfirmedLevel := ev.level
+            else
+                bearConfirmedLevel := ev.level
+
+plot(bullConfirmedLevel, title="Bullish V2 confirmed level", display=display.none)
+plot(bearConfirmedLevel, title="Bearish V2 confirmed level", display=display.none)
+alertcondition(v2rOn and v2rNewBull,
+     title="CISD V2 — bullish confirmed CLOSE",
+     message='CISD V2 BULL | {{ticker}} | {{interval}} | close={{close}} | level={{plot("Bullish V2 confirmed level")}}')
+alertcondition(v2rOn and v2rNewBear,
+     title="CISD V2 — bearish confirmed CLOSE",
+     message='CISD V2 BEAR | {{ticker}} | {{interval}} | close={{close}} | level={{plot("Bearish V2 confirmed level")}}')
