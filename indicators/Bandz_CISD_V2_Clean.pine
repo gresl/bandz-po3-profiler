@@ -41,8 +41,8 @@ bool showInvalidated = input.bool(true, "Keep invalidated levels (faded)", group
 bool showLineLabels = input.bool(false, "Show price labels at confirmations", group=G_VIS)
 bool showBull = input.bool(true, "Show bullish signals", group=G_VIS)
 bool showBear = input.bool(true, "Show bearish signals", group=G_VIS)
-string lineStart = input.string("Confirmation", "Historical line begins at", options=["Confirmation", "Opposing stretch origin"], group=G_VIS,
-     tooltip="Origin-anchored historical lines are drawn ONLY at confirmation, not available as real-time signals before that close.")
+string lineStart = input.string("Opposing stretch origin", "Historical line begins at", options=["Confirmation", "Opposing stretch origin"], group=G_VIS,
+     tooltip="Show the confirmed level from the first candle of its opposing stretch, using the V2 originBar field. This back-anchored historical line is drawn ONLY at actual CISD confirmation, never in advance.")
 int historyLines = input.int(60, "Maximum retained confirmed lines", minval=1, maxval=120, group=G_VIS)
 int lineBars = input.int(20, "Confirmed line duration (bars)", minval=1, maxval=250, group=G_VIS)
 int lineWidth = input.int(2, "Confirmed line width", minval=1, maxval=4, group=G_VIS)
@@ -252,6 +252,9 @@ if v2rOn and v2rLines and showConfirmed and barstate.isconfirmed
             PoV2PivotEvent ev = v2rEvents.get(i)
             bool shownSide = ev.bull ? showBull : showBear
             if shownSide and ev.state == 1 and ev.confirmBar == bar_index
+                // The first opposing-stretch candle's OPEN defines ev.level.
+                // Back-anchor the level to that candle for structural context;
+                // this is display-only, created at confirmation, never earlier.
                 int xStart = lineStart == "Confirmation" ? ev.confirmBar : ev.originBar
                 color col = ev.bull ? bullColor : bearColor
                 line ln = line.new(xStart, ev.level, math.max(xStart + 1, bar_index), ev.level,
