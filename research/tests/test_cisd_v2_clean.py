@@ -12,7 +12,8 @@ CLEAN=ROOT/"indicators/Bandz_CISD_V2_Clean.pine"
 
 def core(source: str)->str:
     a=source.index("type PoV2PivotEvent\n")
-    b=source.index("\nfloat v2rPendingBull = na",a)
+    frozen_end="\n// ============================================================================\n// FROZEN DETECTOR — end exact source extraction"
+    b=source.index(frozen_end,a) if frozen_end in source[a:] else source.index("\nfloat v2rPendingBull = na",a)
     return source[a:b].strip()
 
 class FrozenEngineTests(unittest.TestCase):
