@@ -1,6 +1,6 @@
 # CISD V2C engineering investigation — 2026-11-20
 
-**Status:** source and frozen-log diagnosis complete, offline tests passing. Actual private Cephxs event comparison and native Pine compilation of experimental changes remain unverified. This is NOT evidence of trade profitability or of Cephxs parity.
+**Status (updated 2026-11-20):** source/frozen-log diagnosis complete; private Cephxs reference event logger compiled and produced historical closed-event CSV. Bandz V2C/4G native Pine compilation remains optional and unverified. This is NOT evidence of trade profitability or of Cephxs parity.
 
 ## Versions and feeds
 
@@ -62,6 +62,23 @@ This makes independent reference comparison feasible in batches rather than one 
 
 DONE: source-level latency and origin differences; frozen dataset classification; conservative lifecycle analysis; opt-in cause telemetry; independent reference logger implementation; Python unit and integration regressions in GitHub CI.
 
-NOT DONE: native Pine v6 compile of both new experimental adapters; reference event capture in TradingView; determination of whether the current *real* Cephxs base matches or rejects each discrepant signal; out-of-sample demonstration of an improved V2C detector.
+NOT DONE: native Pine v6 compile of optional Bandz V2C/4G; out-of-sample and realtime non-repainting demonstration of an improved detector. The Cephxs reference logger HAS compiled, with a historical event export as verified below.
 
 **Research discipline:** There is not yet evidence to rewrite the V2 detection engine, relax the ATR gate, discard the pivot, or claim superior entry quality. Keep working baseline intact, investigate only verified disagreements, and separate early delivery breaks from pivot-confirmed entries.
+
+## Nov 20 independent reference export — acceptance result
+
+The user supplied 27 CEPHXSEVT1 confirmed Cephxs closed events from the private adapter on FOREXCOM:GBPUSD M15, Nov17–18. All embedded close_ms timestamps fall exactly 15m after native CSV bar-open Date. The frozen earlier Bandz log contains 17 V2 confirmations and 13 legacy confirmations through Nov18 09:45 UTC. Evaluate only the shared period Nov17 01:15–Nov18 09:45 inclusive; nine later Cephxs events lack Bandz coverage.
+
+| Engine vs Cephxs | Exact | Level diff | Time diff | Bandz-only | Cephxs-only |
+|---|---:|---:|---:|---:|---:|
+| V2 | **17** | **0** | **0** | **0** | **1** |
+| Legacy | **8** | **1** | **1** | **3** | **8** |
+
+- Nov17 07:45 BEAR: Cephxs and V2 reference level 1.31911; legacy 1.31926, 15 ticks difference.
+- Nov18 BEAR: Cephxs and V2 confirm 07:30 at level 1.31889; legacy confirmed 07:15 at same level, consistent with V2 pivot-qualification latency.
+- All 7 formerly V2_ONLY vs legacy events are present at identical side, close and level in Cephxs.
+- None of 3 legacy-only confirmations (Nov17 10:15 BEAR 1.31952, Nov17 20:00 BEAR 1.32184, Nov18 03:00 BEAR 1.32042) appears in Cephxs as a matching event.
+- One extra Cephxs event at Nov18 02:15 BULL 1.32040, after the earlier 02:00 BULL 1.32040 event already matched by V2. Its new pivot bar 2750 differs from prior pivot 2746, but source origin bar 2745 and reference price are identical. Its candle opens 1.32060 and closes 1.32042, bearish-bodied but above level. Specific cause for V2 omission remains unproven.
+
+**Decision:** freeze V2 detector for this bounded *in-sample historical reference-parity* phase. Do not tune to chase the repeated-level signal, alter legacy production, or claim live non-repainting or trade profitability. Defer optional 4G validation and retain PR #19 in draft; prioritize Po3/C2 integration and journaled trade outcomes. Raw private Cephxs log must not be committed to the public repo.
