@@ -13,7 +13,7 @@ FULL=ROOT/"indicators/Bandz_Po3_Full_V2_Integrated.pine"
 
 def detector(src: str)->str:
     a=src.index("type PoV2PivotEvent\n")
-    b=src.index("\nfloat v2rPendingBull = na",a) if "\nfloat v2rPendingBull = na" in src[a:] else src.index("\n// Which CISD slot feeds the sequence:",a)
+    b=min(src.index("\nfloat v2rPendingBull = na",a), src.index("\n// Which CISD slot feeds the sequence:",a)) if "\n// Which CISD slot feeds the sequence:" in src[a:] else src.index("\nfloat v2rPendingBull = na",a)
     return src[a:b].strip()
 
 class FullBandzV2Checks(unittest.TestCase):
