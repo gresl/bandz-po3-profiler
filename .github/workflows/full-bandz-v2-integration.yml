@@ -1,0 +1,30 @@
+name: Full Bandz CISD V2 integration regression
+
+on:
+  push:
+    branches:
+      - feature/full-bandz-cisd-v2-sequence-20261120
+    paths:
+      - 'indicators/Bandz_Po3_Full_V2_Integrated.pine'
+      - 'Bandz_Po3_Profiler.pine'
+      - 'research/tests/test_full_bandz_v2_integration.py'
+      - '.github/workflows/full-bandz-v2-integration.yml'
+  pull_request:
+    paths:
+      - 'indicators/Bandz_Po3_Full_V2_Integrated.pine'
+      - 'Bandz_Po3_Profiler.pine'
+      - 'research/tests/test_full_bandz_v2_integration.py'
+      - '.github/workflows/full-bandz-v2-integration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preserve-full-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify unchanged engine and original Bandz modules
+        run: python3 -m unittest discover -s research/tests -p test_full_bandz_v2_integration.py -v
