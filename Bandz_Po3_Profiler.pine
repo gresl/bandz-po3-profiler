@@ -49,6 +49,7 @@ const string PO_G8C = "4C · CISD V2 pivot research (experimental)"
 const string PO_G8D = "4D · Legacy CISD skip diagnostics (opt-in)"
 const string PO_G8E = "4E · Research batch CSV export (opt-in)"
 const string PO_G8F = "4F · Essential Pine Logs event export (opt-in)"
+const string PO_G8G = "4G · V2C causal telemetry (opt-in)"
 const string PO_G3  = "5 · SMT / SSMT"
 const string PO_GP  = "6 · PSP"
 const string PO_G4  = "7 · HTF candles"
@@ -204,6 +205,7 @@ bool v2LogOn = input.bool(false, "Logs: emit closed-bar CISD events", group=PO_G
 int v2LogFrom = input.time(timestamp("16 Nov 2026 00:00 +0000"), "Logs: from UTC (inclusive)", group=PO_G8F)
 int v2LogTo = input.time(timestamp("21 Nov 2026 00:00 +0000"), "Logs: to UTC (exclusive)", group=PO_G8F)
 bool v2LogLifecycle = input.bool(true, "Logs: include V2 terminal lifecycle events", group=PO_G8F, tooltip="Logs V2 expired/rejected/superseded/invalidation events to investigate false negatives. Does not alter engine.")
+bool v2cCauseOn = input.bool(false, "V2C: log confirmation cause snapshots (requires 4F)", group=PO_G8G, tooltip="Read-only closed-bar snapshots of legacy predicates, first-known pivot age and nearby V2 candidate state. Does NOT change either engine.")
 
 
 
@@ -3529,3 +3531,84 @@ if v2LogWindow
                 msg += "|reason=" + ev.reason
                 log.info(msg)
 
+
+// =============================================================================
+// PHASE 2E / V2C: READ-ONLY CAUSAL TELEMETRY (CISDCAUSE1).
+// Research only; no detector, plot, alert, C2/Po3 or chart-display changes.
+// Runs AFTER legacy and V2 update, on confirmed closing bars within 4F range.
+// Avoid blaming a rejected candidate unless its SIDE, LEVEL and TIME match.
+// =============================================================================
+if v2LogWindow and v2cCauseOn and v2rOn and poCalc
+    // For EVERY V2 confirmation: preserve legacy predicates as they stood
+    // after normal legacy execution. When same-side legacy also confirmed,
+    // its opposing-run state has already been cleared, so mark it explicitly.
+    if v2rEvents.size() > 0
+        for vi = 0 to v2rEvents.size() - 1
+            PoV2PivotEvent ve = v2rEvents.get(vi)
+            if ve.state == 1 and ve.confirmBar == bar_index and ve.confirmAt == time_close
+                bool legacyAlso = ve.bull ? poCisdNewBull : poCisdNewBear
+                int lRun = ve.bull ? poBearRunLen : poBullRunLen
+                int lStart = ve.bull ? poBearRunBar : poBullRunBar
+                float lLevel = ve.bull ? (poCisdSens == "Sensitive" ? poBearRunLast : poBearRunFirst) : (poCisdSens == "Sensitive" ? poBullRunLast : poBullRunFirst)
+                bool lDirection = ve.bull ? close > open : close < open
+                bool lLevelValid = not na(lLevel)
+                bool lMinRun = lRun >= poCisdMinRun
+                bool lCross = lLevelValid and (ve.bull ? close > lLevel : close < lLevel)
+                bool lAge = not na(lStart) and bar_index - lStart <= 60
+                bool lUnique = not poCisdOnBar(ve.bull)
+                bool priorBeyond = bar_index > 0 and (ve.bull ? close[1] > ve.level : close[1] < ve.level)
+                string cm = "CISDCAUSE1|kind=V2_CONFIRM|symbol=" + syminfo.tickerid + "|tf=" + timeframe.period
+                cm += "|close_ms=" + str.tostring(time_close) + "|side=" + (ve.bull ? "BULL" : "BEAR")
+                cm += "|v2_level=" + str.tostring(ve.level, format.mintick)
+                cm += "|v2_known_ms=" + str.tostring(ve.bornAt) + "|v2_pivot_bar=" + str.tostring(ve.pivotBar)
+                cm += "|pivot_known_this_close=" + str.tostring(ve.bornBar == bar_index)
+                cm += "|previous_close_beyond_v2=" + str.tostring(priorBeyond)
+                cm += "|same_side_legacy_confirm=" + str.tostring(legacyAlso)
+                cm += "|legacy_run_state_reset=" + str.tostring(legacyAlso)
+                cm += "|legacy_run_len=" + str.tostring(lRun)
+                cm += "|legacy_min_run=" + str.tostring(poCisdMinRun)
+                cm += "|legacy_run_start_bar=" + str.tostring(lStart)
+                cm += "|legacy_selected_level=" + str.tostring(lLevel, format.mintick)
+                cm += "|legacy_direction_pass=" + str.tostring(lDirection)
+                cm += "|legacy_level_pass=" + str.tostring(lLevelValid)
+                cm += "|legacy_min_run_pass=" + str.tostring(lMinRun)
+                cm += "|legacy_close_through_pass=" + str.tostring(lCross)
+                cm += "|legacy_age_pass=" + str.tostring(lAge)
+                cm += "|legacy_duplicate_pass=" + str.tostring(lUnique)
+                log.info(cm)
+
+    // For EACH legacy confirmation: inspect only same-side V2 candidates
+    // already known by THIS close, and record the nearest reference.
+    // A same-time, other-direction PIVOT_BREACH is never causal evidence.
+    if poCisdEvents.size() > 0
+        for li = 0 to poCisdEvents.size() - 1
+            PoCisdEvent le = poCisdEvents.get(li)
+            if le.confirmBar == bar_index and le.confirmTime == time_close
+                int bestIndex = -1
+                float bestDelta = 1e15
+                if v2rEvents.size() > 0
+                    for vi = 0 to v2rEvents.size() - 1
+                        PoV2PivotEvent ve = v2rEvents.get(vi)
+                        bool alreadyKnown = ve.bornBar <= bar_index and ve.bornAt <= time_close
+                        bool recentEnough = bar_index - ve.bornBar <= v2rExpiry + 4
+                        if ve.bull == le.bull and alreadyKnown and recentEnough
+                            float priceDelta = math.abs(ve.level - le.level)
+                            if priceDelta < bestDelta
+                                bestDelta := priceDelta
+                                bestIndex := vi
+                string lm = "CISDCAUSE1|kind=LEGACY_CONFIRM|symbol=" + syminfo.tickerid + "|tf=" + timeframe.period
+                lm += "|close_ms=" + str.tostring(time_close) + "|side=" + (le.bull ? "BULL" : "BEAR")
+                lm += "|legacy_level=" + str.tostring(le.level, format.mintick)
+                lm += "|legacy_start_bar=" + str.tostring(le.startBar)
+                if bestIndex >= 0
+                    PoV2PivotEvent candidate = v2rEvents.get(bestIndex)
+                    float ticksApart = bestDelta / syminfo.mintick
+                    lm += "|nearest_v2_level=" + str.tostring(candidate.level, format.mintick)
+                    lm += "|nearest_v2_state=" + str.tostring(candidate.state)
+                    lm += "|nearest_v2_reason=" + candidate.reason
+                    lm += "|nearest_v2_known_ms=" + str.tostring(candidate.bornAt)
+                    lm += "|nearest_v2_gap_ticks=" + str.tostring(ticksApart, "#.###")
+                    lm += "|nearest_v2_within_tol=" + str.tostring(ticksApart <= v2dNearTicks)
+                else
+                    lm += "|nearest_v2_level=na|nearest_v2_state=na|nearest_v2_reason=NO_KNOWN_SAME_SIDE_CANDIDATE"
+                log.info(lm)
