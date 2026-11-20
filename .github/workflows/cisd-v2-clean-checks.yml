@@ -1,0 +1,30 @@
+name: CISD V2 Clean frozen-engine checks
+
+on:
+  push:
+    branches:
+      - feature/cisd-v2-clean-visual-20261120
+    paths:
+      - 'indicators/Bandz_CISD_V2_Clean.pine'
+      - 'Bandz_Po3_Profiler.pine'
+      - 'research/tests/test_cisd_v2_clean.py'
+      - '.github/workflows/cisd-v2-clean-checks.yml'
+  pull_request:
+    paths:
+      - 'indicators/Bandz_CISD_V2_Clean.pine'
+      - 'Bandz_Po3_Profiler.pine'
+      - 'research/tests/test_cisd_v2_clean.py'
+      - '.github/workflows/cisd-v2-clean-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify V2 core and independent closed-bar drawings
+        run: python3 -m unittest discover -s research/tests -p test_cisd_v2_clean.py -v
