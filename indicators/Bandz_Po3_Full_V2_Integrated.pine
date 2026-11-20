@@ -1915,7 +1915,7 @@ if poCalc and barstate.isconfirmed
 // confirmed CISD history without modifying the original trigger or C2 logic.
 // All states are updated on confirmed chart closes; first-known timestamps are
 // never filled using prices from future replay bars.
-bool poResearchFvgEnabled = poCalc and po3ShowCisd and poCisdScope == "All + C2 highlighted"
+bool poResearchFvgEnabled = poCisdEngine == "Legacy" and poCalc and po3ShowCisd and poCisdScope == "All + C2 highlighted"
 bool poResearchFvgNew = false
 if poResearchFvgEnabled and barstate.isconfirmed
     int closedAt = na(time_close) ? time : time_close
@@ -2348,8 +2348,8 @@ color poNoBorder = color.new(color.white, 100)
 
 var table poHdr = table.new(position.top_center, 1, 2)
 var table poPnl = poChecklist ? table.new(position.middle_right, 2, 7) : na
-var table poCisdQualPanel = poCisdQualStats ? table.new(position.bottom_left, 2, 9, bgcolor = color.new(color.black, 16)) : na
-var table poCisdAuditPanel = poCisdAuditOn and po3ShowCisd and poCisdScope == "All + C2 highlighted" ? table.new(position.bottom_right, 2, (poCisdOutcomeOn ? 26 : 20) + (poCisdParityAudit ? 6 : 0), bgcolor = color.new(color.black, 16)) : na
+var table poCisdQualPanel = poCisdEngine == "Legacy" and poCisdQualStats ? table.new(position.bottom_left, 2, 9, bgcolor = color.new(color.black, 16)) : na
+var table poCisdAuditPanel = poCisdEngine == "Legacy" and poCisdAuditOn and po3ShowCisd and poCisdScope == "All + C2 highlighted" ? table.new(position.bottom_right, 2, (poCisdOutcomeOn ? 26 : 20) + (poCisdParityAudit ? 6 : 0), bgcolor = color.new(color.black, 16)) : na
 
 poClearAll() =>
     while poBoxes.size() > 0
