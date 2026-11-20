@@ -2,13 +2,13 @@
 
 **Branch:** `experiment/cisd-v2-pine-logs-20261120`  
 **Parent:** `experiment/cisd-v2-batch-export-20261119`  
-**Status:** offline parser and CI tests exist; **native TradingView Pine v6 compile + Pine Logs copy acceptance still required**. This is a research-export utility, not a detector update or trade signal.
+**Status:** **ACCEPTED on TradingView Essential 2026-11-20**: Pine v6 compiled, native `Date,Message` Pine Logs CSV exported, 69 records parsed and 4C results independently reproduced. See [acceptance report](CISD_V2_PHASE2D_ACCEPTANCE_20261120.md). This remains a research-export utility, not a detector update or trade signal.
 
 ## Why this collector exists
 
 TradingView Essential may not offer **Export chart data**, so the Phase 2C numeric plot/CSV method cannot be the only export mechanism. TradingView's official docs explicitly support Pine Logs from **personal scripts**, on historical bars and in Bar Replay, and display up to 10,000 historical logs. See [official support](https://www.tradingview.com/support/solutions/43000710876-i-d-like-to-learn-more-about-pine-logs/) and [Pine Logs v6](https://www.tradingview.com/pine-script-docs/writing/debugging/#pine-logs).
 
-**Pine Logs are not an official bulk CSV download**. The log pane copies/selects may vary by TradingView UI. We must validate that the user can actually **copy raw text** (not only screenshot it), before declaring this a scalable batch export. If copying a log panel is impractical, use our planned webhook and PostgreSQL event stream for future collection; Pine Logs can still validate a small sample manually.
+The user's TradingView Essential Pine Logs panel **successfully exported a native two-column `Date,Message` CSV**. The Python importer supports that observed format (and pasted text), including a Replay-specific `syminfo.tickerid` envelope. CSV export behavior may vary by UI version; the specific observed setup is accepted. No subscription change is needed for this research.
 
 ## Added 4F inputs (opt-in)
 
@@ -32,11 +32,11 @@ Current code retains Phase 2C's `4E` Data Window plots, which default OFF and ar
 3. Use start/end UTC **2026-11-17 00:00** to **2026-11-19 00:00**. Prefer normal historical chart (rather than Bar Replay) with those bars loaded; no candle-by-candle stepping is required. Ensure **the date range and chart bar data are loaded**.
 4. Open Pine Editor > More > **Pine Logs** (or indicator status-line > More > Pine Logs). Select **this personal script** in the logs selector. Use pane search `CISDEVT1` to remove other chatter. Check for `kind=CONFIRM` records from `engine=V2` and `engine=LEGACY`.
 5. **First validation:** find a logged V2 bearish confirmation near `2026-11-18 07:30 UTC` at reference `1.31889` and a legacy bearish confirmation near `07:15 UTC` at the same level. If none, check source feed, V2 switches, loaded history and any removed/changed inputs.
-6. **Copy raw text from Pine Logs** (or select text and paste into a local UTF-8 `.txt` file) and upload that file. **If TV doesn't permit copying multiple logs**, send one screenshot of its log panel and report the exact obstacle—do not keep repeating individual-candle tests. We can switch to on-server collection instead.
-7. Convert pasted text to normalized event CSVs:
+6. In Pine Logs, **export the log entries as CSV** and upload the resulting `Date,Message` file. This was verified on Essential on 2026-11-20. Text pasted from the panel also remains supported. The raw Replay feed ID is ephemeral; do not commit the raw user export to a public GitHub repository.
+7. Convert the native CSV or pasted text into normalized event CSVs:
 
    ```bash
-   python3 research/parse_cisd_pine_logs.py /path/to/pine-logs.txt
+   python3 research/parse_cisd_pine_logs.py /path/to/pine-logs.csv
    ```
 
    The script generates `pine-logs.events.csv` and `pine-logs.compared.csv`. Run from repository root; Python 3.10+ recommended.
@@ -59,6 +59,6 @@ The GBPUSD 15m chart uploaded Nov 20 at 13:50 UTC shows a visually useful exampl
 
 ## Phase closure criteria
 
-This research **data-collection infrastructure stage is complete** once (A) Pine v6 compiles in TradingView, (B) the exact 07:15/07:30 exported close-time pair is reproducible from raw logs, and (C) the raw text is practically copyable for the chosen window. If (C) fails on Essential, stop immediately; move to low-overhead webhook event collection, not more screenshot ping-pong or buying a subscription.
+**All three acceptance criteria passed on 2026-11-20.** Pine v6 compiled, the 07:15/07:30 event pair was reproduced, and the full native Pine Logs CSV was exported and parsed. This Phase 2D data-collection stage is complete; proceed to offline cause analysis rather than more screenshot ping-pong.
 
 The subsequent work is a **new** exercise: bounded event evaluation and then V2C improvements to candidate construction after fixing the measured late/omitted classifications.
