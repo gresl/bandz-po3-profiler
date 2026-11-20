@@ -48,6 +48,7 @@ const string PO_G8B = "4B · CISD structural research"
 const string PO_G8C = "4C · CISD V2 pivot research (experimental)"
 const string PO_G8D = "4D · Legacy CISD skip diagnostics (opt-in)"
 const string PO_G8E = "4E · Research batch CSV export (opt-in)"
+const string PO_G8F = "4F · Essential Pine Logs event export (opt-in)"
 const string PO_G3  = "5 · SMT / SSMT"
 const string PO_GP  = "6 · PSP"
 const string PO_G4  = "7 · HTF candles"
@@ -199,6 +200,10 @@ bool v2SkipPanel = input.bool(true, "Skip audit: show snapshot (middle left)", g
 // Data Window plots are picked up by TradingView Export chart data -> CSV.
 // All fields are confirmed-close only and NA between signals; off by default.
 bool v2BatchExportOn = input.bool(false, "Export: numeric event columns in CSV", group=PO_G8E, tooltip="Adds Data Window-only series to chart CSV export. Does not change detections or drawings. Keep chart timezone UTC during export.")
+bool v2LogOn = input.bool(false, "Logs: emit closed-bar CISD events", group=PO_G8F, tooltip="Essential-compatible Pine Logs; historical and Replay. Captures V2 and legacy confirmations at their actual candle close. OFF by default.")
+int v2LogFrom = input.time(timestamp("2026-11-16T00:00:00Z"), "Logs: from UTC (inclusive)", group=PO_G8F)
+int v2LogTo = input.time(timestamp("2026-11-21T00:00:00Z"), "Logs: to UTC (exclusive)", group=PO_G8F)
+bool v2LogLifecycle = input.bool(true, "Logs: include V2 terminal lifecycle events", group=PO_G8F, tooltip="Logs V2 expired/rejected/superseded/invalidation events to investigate false negatives. Does not alter engine.")
 
 
 
@@ -3468,3 +3473,59 @@ plot(exV2BullPivot, title="CISDEXP_V2_BULL_PIVOT_BAR", display=display.data_wind
 plot(exV2BearPivot, title="CISDEXP_V2_BEAR_PIVOT_BAR", display=display.data_window)
 plot(exV2BullCount, title="CISDEXP_V2_BULL_COUNT", display=display.data_window)
 plot(exV2BearCount, title="CISDEXP_V2_BEAR_COUNT", display=display.data_window)
+
+
+// =============================================================================
+// PHASE 2D: ESSENTIAL-PLAN PINE LOGS HISTORICAL EXPORT
+// ONLY AFTER legacy & V2 event state machines complete. OFF by default.
+// Each line has a stable CISDEVT1| delimiter and explicit UTC epoch ms.
+// Pine Logs pane prefixes *bar-open* date in chart timezone; use close_ms
+// recorded here for confirmed event-time comparisons.
+// =============================================================================
+bool v2LogWindow = v2LogOn and barstate.isconfirmed and
+     not na(time_close) and time_close >= v2LogFrom and time_close < v2LogTo
+
+if v2LogWindow
+    if poCisdEvents.size() > 0
+        for i = 0 to poCisdEvents.size() - 1
+            PoCisdEvent ev = poCisdEvents.get(i)
+            if ev.confirmBar == bar_index and ev.confirmTime == time_close
+                string msg = "CISDEVT1|kind=CONFIRM|engine=LEGACY"
+                msg += "|symbol=" + syminfo.tickerid + "|tf=" + timeframe.period
+                msg += "|side=" + (ev.bull ? "BULL" : "BEAR")
+                msg += "|close_ms=" + str.tostring(ev.confirmTime)
+                msg += "|level=" + str.tostring(ev.level, format.mintick)
+                msg += "|bar=" + str.tostring(bar_index)
+                msg += "|o=" + str.tostring(open, format.mintick)
+                msg += "|h=" + str.tostring(high, format.mintick)
+                msg += "|l=" + str.tostring(low, format.mintick)
+                msg += "|c=" + str.tostring(close, format.mintick)
+                msg += "|opposing_first=" + str.tostring(ev.firstOpposingOpen, format.mintick)
+                log.info(msg)
+    if v2rOn and v2rEvents.size() > 0
+        for i = 0 to v2rEvents.size() - 1
+            PoV2PivotEvent ev = v2rEvents.get(i)
+            bool onConfirmedBar = (ev.state == 1 or ev.state == 2) and
+                 ev.confirmBar == bar_index and ev.confirmAt == time_close
+            bool onTerminalBar = v2LogLifecycle and
+                 (ev.state == 3 or ev.state == 4 or ev.state == 5 or ev.state == 2) and
+                 ev.terminalAt == time_close
+            if onConfirmedBar or onTerminalBar
+                string kind = onConfirmedBar ? "CONFIRM" : "LIFECYCLE"
+                string msg = "CISDEVT1|kind=" + kind + "|engine=V2"
+                msg += "|symbol=" + syminfo.tickerid + "|tf=" + timeframe.period
+                msg += "|side=" + (ev.bull ? "BULL" : "BEAR")
+                msg += "|close_ms=" + str.tostring(time_close)
+                msg += "|level=" + str.tostring(ev.level, format.mintick)
+                msg += "|bar=" + str.tostring(bar_index)
+                msg += "|o=" + str.tostring(open, format.mintick)
+                msg += "|h=" + str.tostring(high, format.mintick)
+                msg += "|l=" + str.tostring(low, format.mintick)
+                msg += "|c=" + str.tostring(close, format.mintick)
+                msg += "|known_ms=" + str.tostring(ev.bornAt)
+                msg += "|pivot_bar=" + str.tostring(ev.pivotBar)
+                msg += "|stretch_atr=" + str.tostring(ev.stretchAtr, "#.####")
+                msg += "|state=" + str.tostring(ev.state)
+                msg += "|reason=" + ev.reason
+                log.info(msg)
+
