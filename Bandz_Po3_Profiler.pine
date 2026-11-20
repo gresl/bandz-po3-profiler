@@ -201,8 +201,8 @@ bool v2SkipPanel = input.bool(true, "Skip audit: show snapshot (middle left)", g
 // All fields are confirmed-close only and NA between signals; off by default.
 bool v2BatchExportOn = input.bool(false, "Export: numeric event columns in CSV", group=PO_G8E, tooltip="Adds Data Window-only series to chart CSV export. Does not change detections or drawings. Keep chart timezone UTC during export.")
 bool v2LogOn = input.bool(false, "Logs: emit closed-bar CISD events", group=PO_G8F, tooltip="Essential-compatible Pine Logs; historical and Replay. Captures V2 and legacy confirmations at their actual candle close. OFF by default.")
-int v2LogFrom = input.time(timestamp("2026-11-16T00:00:00Z"), "Logs: from UTC (inclusive)", group=PO_G8F)
-int v2LogTo = input.time(timestamp("2026-11-21T00:00:00Z"), "Logs: to UTC (exclusive)", group=PO_G8F)
+int v2LogFrom = input.time(timestamp("16 Nov 2026 00:00 +0000"), "Logs: from UTC (inclusive)", group=PO_G8F)
+int v2LogTo = input.time(timestamp("21 Nov 2026 00:00 +0000"), "Logs: to UTC (exclusive)", group=PO_G8F)
 bool v2LogLifecycle = input.bool(true, "Logs: include V2 terminal lifecycle events", group=PO_G8F, tooltip="Logs V2 expired/rejected/superseded/invalidation events to investigate false negatives. Does not alter engine.")
 
 
