@@ -1660,6 +1660,8 @@ if poCalc
 // ORIGINAL V2 PIVOT ENGINE — source-exact frozen detector relocated here.
 // This placement is required so Po3 sequence routing can consume *this bar's*
 // V2 closed confirmation, rather than a separate after-render research marker.
+// NOTE: frozen core's comment about not feeding poLinkCisd describes the
+// pre-integration research script. The adapter AFTER this block now feeds it.
 // ============================================================================
 type PoV2PivotEvent
     bool bull
@@ -3197,13 +3199,11 @@ if barstate.islast and bandzModulePo3
 
 
 // =============================================================================
-// CISD V2 PIVOT LIFECYCLE RESEARCH — OPT IN (independent of Bandz legacy)
-// Original prototype rules, not a copy of the Cephxs implementation.
-// Every state transition below is based exclusively on CLOSED chart candles.
-// Pivot known at current close, anchored at (bar_index - v2rPivotLen).
-// No history backfilling, no intrabar confirmation claims, and no trade alerts.
-// State: 0 pending; 1 confirmed; 2 confirmed then invalidated;
-//        3 expired; 4 pending invalidated; 5 superseded by newer same-side pivot.
+// V2 DEBUG RENDERING / REGISTRY / AUDIT — core was relocated BEFORE Po3 routing.
+// The frozen source's historical comment inside its detector says it was not
+// used by poLinkCisd; this was true of the research baseline. In THIS full
+// integration, the new adapter downstream of the detector consumes V2 output.
+// Extra pending levels and markers below are optional presentation only.
 // =============================================================================
 // Frozen V2 implementation relocated before sequence CISD dispatch.
 
