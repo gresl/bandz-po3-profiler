@@ -9,6 +9,7 @@ on:
       - experiment/cisd-v2-legacy-skip-diagnostics-20261118
       - experiment/cisd-v2-batch-export-20261119
       - experiment/cisd-v2-pine-logs-20261120
+      - experiment/cisd-v2c-causal-diagnostics-20261120
   pull_request:
     paths:
       - "research/**"
@@ -26,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile research tools
-        run: python3 -m py_compile research/validate_cisd_sample.py research/analyze_cisd_sample.py research/tests/test_cisd_analysis.py research/cisd_v2_oracle.py research/tests/test_v2_pivot_oracle.py research/cisd_v2_disagreement_oracle.py research/tests/test_v2_disagreement_oracle.py research/cisd_legacy_skip_oracle.py research/tests/test_legacy_skip_oracle.py research/analyze_cisd_batch.py research/tests/test_cisd_batch_export.py research/parse_cisd_pine_logs.py research/tests/test_cisd_pine_logs.py
+        run: python3 -m py_compile research/validate_cisd_sample.py research/analyze_cisd_sample.py research/tests/test_cisd_analysis.py research/cisd_v2_oracle.py research/tests/test_v2_pivot_oracle.py research/cisd_v2_disagreement_oracle.py research/tests/test_v2_disagreement_oracle.py research/cisd_legacy_skip_oracle.py research/tests/test_legacy_skip_oracle.py research/analyze_cisd_batch.py research/tests/test_cisd_batch_export.py research/parse_cisd_pine_logs.py research/tests/test_cisd_pine_logs.py research/parse_cisd_cause_logs.py research/tests/test_cisd_cause_logs.py
       - name: Synthetic research tests
         run: python3 -m unittest discover -s research/tests -v
       - name: Validate and analyze empty canonical manifest
