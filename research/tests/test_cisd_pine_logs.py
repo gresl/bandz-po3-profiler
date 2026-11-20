@@ -1,4 +1,6 @@
 import unittest
+import csv
+import io
 from datetime import datetime, timezone
 from tempfile import TemporaryDirectory
 from pathlib import Path
@@ -66,6 +68,23 @@ class TestPineLogsParse(unittest.TestCase):
         b = line("LEGACY", ts, "1.31889").replace("FOREXCOM:GBPUSD", "FX:GBPUSD")
         with self.assertRaisesRegex(ValueError, "Mixed"):
             parse_logs(a+"\n"+b)
+
+    def test_native_tradingview_date_message_csv_replay_feed(self):
+        ms = int(datetime(2026, 11, 18, 7, 30, tzinfo=timezone.utc).timestamp() * 1000)
+        replay = '={"replay":"internal-opaque-id","symbol":"FOREXCOM:GBPUSD"}'
+        v = line("V2", ms, "1.31889", extra="|pivot_bar=11749|stretch_atr=0.73")
+        v = v.replace("symbol=FOREXCOM:GBPUSD", "symbol=" + replay)
+        writer_buf = io.StringIO()
+        writer = csv.DictWriter(writer_buf, fieldnames=["Date", "Message"])
+        writer.writeheader()
+        writer.writerow({"Date": "2026-11-18T07:15:00.000-00:00",
+                         "Message": v})
+        rows, notes = parse_logs(writer_buf.getvalue())
+        self.assertEqual(notes, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["symbol"], "FOREXCOM:GBPUSD")
+        self.assertEqual(as_events(rows)[0].confirm_utc,
+                         datetime(2026, 11, 18, 7, 30, tzinfo=timezone.utc))
 
     def test_missing_or_malformed_no_false_positive(self):
         with self.assertRaisesRegex(ValueError, "No valid"):
