@@ -1,0 +1,25 @@
+name: P1 Po3 C2 state audit safety
+on:
+  push:
+    branches:
+      - feature/p1-po3-c2-state-audit-20261123
+    paths:
+      - 'indicators/Bandz_Po3_P1_C2_State_Audit.pine'
+      - 'indicators/Bandz_Po3_V2_Visual_Test.pine'
+      - 'research/tests/test_p1_c2_state_audit.py'
+      - '.github/workflows/p1-c2-state-audit.yml'
+  pull_request:
+    paths:
+      - 'indicators/Bandz_Po3_P1_C2_State_Audit.pine'
+      - 'indicators/Bandz_Po3_V2_Visual_Test.pine'
+      - 'research/tests/test_p1_c2_state_audit.py'
+permissions:
+  contents: read
+jobs:
+  p1-static-and-fixture-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit source invariants and offline state transitions
+        run: python3 -m unittest discover -s research/tests -p 'test_p1_c2_state_audit.py' -v
