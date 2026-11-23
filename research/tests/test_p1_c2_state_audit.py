@@ -59,7 +59,7 @@ class TestP1StaticSafety(unittest.TestCase):
         before = self.base.replace('indicator("Bandz Po3 V2 — Visual Test", shorttitle="Bandz V2 Test",',
                                    'indicator("Bandz Po3 P1 — C2 State Audit", shorttitle="Bandz P1 C2",')
         self.assertIn(P1_MARKER, self.p1)
-        self.assertEqual(self.p1.split(P1_MARKER)[0], before.split(P1_MARKER)[0])
+        self.assertEqual(self.p1.split(P1_MARKER)[0].rstrip().removesuffix('// =============================================================================').rstrip(), before.rstrip())
 
     def test_p1_has_no_alerts_or_writes_to_original_engine(self):
         appendix = self.p1.split(P1_MARKER, 1)[1]
