@@ -3767,17 +3767,18 @@ if p1On and poCalc and poSrcOk and barstate.isconfirmed and not na(time_close)
                     e.lastReason := "ORIGINAL_RECORD_EVICTED"
 
 // Audit renders only at chart's last bar. No output modifies engine signals.
-var table p1Table = p1On ? table.new(position.middle_right, 6, 9,
+var table p1Table = p1On ? table.new(position.middle_right, 7, 9,
      bgcolor=color.new(color.rgb(21, 26, 34), 9), border_width=1,
      border_color=color.new(color.gray, 55)) : na
 
 if p1On and barstate.islast and not na(p1Table)
     table.cell(p1Table, 0, 0, "C2 start UTC", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 1, 0, "Side", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 2, 0, "C2 close UTC", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 3, 0, "C2 state", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 4, 0, "CISD close UTC", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 5, 0, "Link / qualification", text_color=color.white, text_size=size.tiny)
+    table.cell(p1Table, 1, 0, "First seen UTC", text_color=color.white, text_size=size.tiny)
+    table.cell(p1Table, 2, 0, "Side", text_color=color.white, text_size=size.tiny)
+    table.cell(p1Table, 3, 0, "C2 close UTC", text_color=color.white, text_size=size.tiny)
+    table.cell(p1Table, 4, 0, "C2 state", text_color=color.white, text_size=size.tiny)
+    table.cell(p1Table, 5, 0, "CISD close UTC", text_color=color.white, text_size=size.tiny)
+    table.cell(p1Table, 6, 0, "Link / qualification", text_color=color.white, text_size=size.tiny)
     for row = 1 to 8
         int idx = p1Events.size() - row
         if idx >= 0 and row <= p1Rows
@@ -3789,11 +3790,12 @@ if p1On and barstate.islast and not na(p1Table)
             color c = e.state == 2 or e.state == 4 ? color.orange : not na(e.brokenAt) ? color.gray :
                  not na(e.qualifiedAt) ? color.lime : e.state == 1 ? color.aqua : color.yellow
             table.cell(p1Table, 0, row, str.format_time(e.c2Start, "MM-dd HH:mm", "Etc/UTC"), text_color=color.silver, text_size=size.tiny)
-            table.cell(p1Table, 1, row, e.side == 1 ? "BULL" : "BEAR", text_color=c, text_size=size.tiny)
-            table.cell(p1Table, 2, row, na(e.c2ClosedAt) ? "—" : str.format_time(e.c2ClosedAt, "MM-dd HH:mm", "Etc/UTC"), text_color=c, text_size=size.tiny)
-            table.cell(p1Table, 3, row, c2State, text_color=c, text_size=size.tiny)
-            table.cell(p1Table, 4, row, na(e.cisdConfirmedAt) ? "—" : str.format_time(e.cisdConfirmedAt, "MM-dd HH:mm", "Etc/UTC"), text_color=c, text_size=size.tiny)
-            table.cell(p1Table, 5, row, linkState, text_color=c, text_size=size.tiny)
+            table.cell(p1Table, 1, row, str.format_time(e.firstSeenAt, "MM-dd HH:mm", "Etc/UTC"), text_color=color.silver, text_size=size.tiny)
+            table.cell(p1Table, 2, row, e.side == 1 ? "BULL" : "BEAR", text_color=c, text_size=size.tiny)
+            table.cell(p1Table, 3, row, na(e.c2ClosedAt) ? "—" : str.format_time(e.c2ClosedAt, "MM-dd HH:mm", "Etc/UTC"), text_color=c, text_size=size.tiny)
+            table.cell(p1Table, 4, row, c2State, text_color=c, text_size=size.tiny)
+            table.cell(p1Table, 5, row, na(e.cisdConfirmedAt) ? "—" : str.format_time(e.cisdConfirmedAt, "MM-dd HH:mm", "Etc/UTC"), text_color=c, text_size=size.tiny)
+            table.cell(p1Table, 6, row, linkState, text_color=c, text_size=size.tiny)
         else
-            for col = 0 to 5
+            for col = 0 to 6
                 table.cell(p1Table, col, row, "", text_size=size.tiny)
