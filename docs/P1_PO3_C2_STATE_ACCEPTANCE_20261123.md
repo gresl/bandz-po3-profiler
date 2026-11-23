@@ -17,7 +17,7 @@ This is a **read-only audit build** for Bandz Po3 V2. It is not the clean tradin
 3. **Legacy chart CISD** and **V2 chart CISD** feed `poLinkCisd()` slot 0; V2 only on a chart bar close. The level may be drawn at an opposing-run origin candle that predates the actual confirmation. This **must not** be interpreted as an earlier event time.
 4. P1 snapshots the selected raw CISD's exact `time_close` on its **confirmation bar** and uses the existing record identity (C2 start time and direction) for matching.
 5. A new **C2 confirmed** state is observed only if the **chart bar itself has closed**, its close timestamp equals the **source HTF candle close**, and the *live current* C2 closes strictly inside C1 (`sq.closedIn`). No future bar is used to certify that close.
-6. A later **C2+CISD qualified** state requires the same original C2 record to still be active, the existing chart-slot CISD link to point at a matching raw closed-bar signal, and `poRecVisible(rc)` to allow the record under the original sequence-direction, PSP and xC2 visibility controls. The qualification time is the **first chart close at which all these are true**, not the C2 start time or CISD origin time.
+6. A later **C2+CISD qualified** state requires the same original C2 record to still be active, the existing chart-slot CISD link to point at a matching raw closed-bar signal, and `poRecVisible(rc)` to allow the record under the original sequence-direction, PSP and xC2 visibility controls, **with no prior close-back-through reclamation recorded**. The qualification time is the **first chart close at which all these are true**, not the C2 start time or CISD origin time.
 7. If a prior linked level is lost before C2 qualification, the provisional P1 link is cleared. A qualified event can subsequently be marked ended if the original CISD is reclaimed/its link ends. An HTF close skipped by a session gap is marked **UNVERIFIED**, not silently backfilled.
 
 ### Intentional distinctions
@@ -25,6 +25,7 @@ This is a **read-only audit build** for Bandz Po3 V2. It is not the clean tradin
 | Audit value | Meaning | Not equivalent to |
 |---|---|---|
 | `C2 start UTC` | Historical open timestamp of the relevant HTF candle | First time the sweep became visible |
+| `First seen UTC` | First closed chart bar at which P1 actually observed this C2 sweep | The HTF candle open or a reconstructed earlier signal |
 | `LIVE` | Candidate C2 swept C1 within the still-forming source candle | Confirmed Po3 setup |
 | `CLOSED PASS` | That HTF C2 closed strictly back inside C1 | Full model entry or qualified T-Spot |
 | `REJECT` | C2 swept C1 but finished outside the required C1 bounds | CISD detector failure |
@@ -56,7 +57,7 @@ For known raw V2 examples from earlier work, `2026-11-17 07:45 UTC` bearish and 
 
 - CI checks that the **entire original computational source** is byte-identical (except the indicator title) before the appended P1 audit.
 - CI checks that the new block cannot mutate existing `PoRec`, `PoSeq`, `poCisds`, or `v2rEvents`, and has no alert calls.
-- Six **synthetic reference scenarios** test the intended event-state contract. These do **not** run Pine code and cannot replace the native TradingView compile / Replay test.
+- Seven **synthetic reference scenarios** test the intended event-state contract. These do **not** run Pine code and cannot replace the native TradingView compile / Replay test.
 - Initial P1 panel does **not** constitute a production alert implementation. Real-time / TradingView Replay event order and session gaps must be verified before a qualified alert can use these snapshots.
 - **No strategy edge or profitability has been established.** This audit concerns event-time integrity, not forecasting outcomes.
 
