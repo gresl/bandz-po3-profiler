@@ -24,6 +24,7 @@ class C2ReferenceModel:
         self.state = "ABSENT"
         self.qualified_at = None
         self.broken_at = None
+        self.reclaimed = False
 
     def on_close(self, t, *, swept=False, c2_final=False, inside=False,
                  cisd_confirm=False, linked=False, visible=False,
@@ -42,8 +43,10 @@ class C2ReferenceModel:
             if inside:
                 self.c2_at = t
         self.visible = visible
+        if reclaim:
+            self.reclaimed = True
         if (self.state == "C2_CONFIRMED" and self.cisd_at is not None
-                and self.linked and self.visible
+                and self.linked and self.visible and not self.reclaimed
                 and self.qualified_at is None):
             self.qualified_at = t
         if reclaim and self.qualified_at is not None and self.broken_at is None:
@@ -83,6 +86,7 @@ class TestP1StaticSafety(unittest.TestCase):
             "e.lastReason := \"HTF_CLOSE_NOT_OBSERVED\"",
             "sg.confirmedAt <= time_close",
             "poRecVisible(rc)",
+            "na(rc.cisdBrokeT)",
             "e.qualifiedAt := time_close",
             "e.brokenAt := time_close",
             "p1FindSignal(e.side, rc.cisdBar, rc.cisdLevel)",
@@ -134,6 +138,14 @@ class TestC2ReferenceAcceptance(unittest.TestCase):
         x.on_close(100, swept=True, cisd_confirm=True, linked=True)
         x.on_close(115, link_cleared=True)
         x.on_close(160, c2_final=True, inside=True, visible=True)
+        self.assertIsNone(x.qualified_at)
+
+    def test_reclaimed_before_gate_becomes_available_never_qualifies(self):
+        x = C2ReferenceModel()
+        x.on_close(100, swept=True, cisd_confirm=True, linked=True)
+        x.on_close(160, c2_final=True, inside=True, visible=False)
+        x.on_close(175, reclaim=True, visible=False)
+        x.on_close(190, visible=True)
         self.assertIsNone(x.qualified_at)
 
     def test_post_close_cisd_and_first_reclamation(self):
