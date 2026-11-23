@@ -3766,6 +3766,32 @@ if p1On and poCalc and poSrcOk and barstate.isconfirmed and not na(time_close)
                     e.state := 3
                     e.lastReason := "ORIGINAL_RECORD_EVICTED"
 
+// Read-only diagnosis for a C2 that has CLOSED PASS but cannot qualify yet.
+p1BlockReason(PoP1C2 e) =>
+    string why = "UNKNOWN"
+    int ri = poFindRec(e.side, e.c2StartBar)
+    if ri == -1
+        why := "RECORD_EVICTED"
+    else
+        PoRec rc = poRecs.get(ri)
+        if not rc.alive
+            why := "SEQ_INACTIVE"
+        else if poSeqSlot != 0
+            why := "NON_CHART_CISD_SLOT"
+        else if na(rc.cisdBar) or na(rc.cisdLevel)
+            why := "NO_ORIGINAL_LINK"
+        else if na(rc.c2ExtBar) or rc.cisdBar <= rc.c2ExtBar
+            why := "LINK_BEFORE_C2_EXTREME"
+        else if p1FindSignal(e.side, rc.cisdBar, rc.cisdLevel) == -1
+            why := "RAW_SIGNAL_MISMATCH"
+        else if not na(rc.cisdBrokeT)
+            why := "CISD_RECLAIMED"
+        else if not poRecVisible(rc)
+            why := "PO3_VISIBILITY_GATE"
+        else
+            why := "ELIGIBLE_NOT_PROMOTED"
+    why
+
 // Audit renders only at chart's last bar. No output modifies engine signals.
 var table p1Table = p1On ? table.new(position.middle_right, 7, 9,
      bgcolor=color.new(color.rgb(21, 26, 34), 9), border_width=1,
@@ -3787,6 +3813,8 @@ if p1On and barstate.islast and not na(p1Table)
             string linkState = e.state == 2 ? "C2 REJECTED" : e.state == 4 ? "HTF UNVERIFIED" :
                  not na(e.brokenAt) ? "ENDED " + str.format_time(e.brokenAt, "MM-dd HH:mm", "Etc/UTC") :
                  not na(e.qualifiedAt) ? "QUALIFIED " + str.format_time(e.qualifiedAt, "MM-dd HH:mm", "Etc/UTC") :
+                 e.state == 3 ? "ENDED / UNQUALIFIED" :
+                 e.state == 1 ? "BLOCKED: " + p1BlockReason(e) :
                  not na(e.cisdConfirmedAt) ? "PROVISIONAL" : e.lastReason
             color c = e.state == 2 or e.state == 4 ? color.orange : not na(e.brokenAt) ? color.gray :
                  not na(e.qualifiedAt) ? color.lime : e.state == 1 ? color.aqua : color.yellow
