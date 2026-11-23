@@ -36,6 +36,12 @@ This is a **read-only audit build** for Bandz Po3 V2. It is not the clean tradin
 
 The original 4H/1H or 6H/90m profile selection matters. The audit's C2 time is based on **the actual selected source timeframe**, not an assumed fixed 4H.
 
+### November 23 Replay finding
+
+User screenshots captured a bearish 4H C2 starting **2026-11-23 06:00 UTC**, first observed **06:15**, with a **09:15 UTC** chart CISD confirmation. C2 changed from LIVE to **CLOSED PASS at 10:00 UTC** but the initial P1 table still read PROVISIONAL. This is **not enough to conclude** that the qualification engine is broken: it also requires `rc.alive`, the original raw-CISD link, no reclaim, and `poRecVisible(rc)`. The initial UI collapsed all non-qualified scenarios into PROVISIONAL.
+
+The audit-only build now prints `BLOCKED: <reason>` for CLOSED PASS but unqualified C2, including `PO3_VISIBILITY_GATE`, `RAW_SIGNAL_MISMATCH`, `CISD_RECLAIMED`, `NO_ORIGINAL_LINK`, or `ELIGIBLE_NOT_PROMOTED`. It also distinguishes `ENDED / UNQUALIFIED` from genuinely provisional signals. This changes only how the audit reports status; it does not change Po3 or CISD output. Ask for just one further screenshot of the `11-23 06:00 BEAR` row with the new diagnostic; do not repeat the entire sweep test.
+
 ## Short TradingView Replay acceptance plan
 
 1. **Preserve** your existing layout and `Bandz Po3 V2 Visual Test` indicator and template. Do not overwrite them.
