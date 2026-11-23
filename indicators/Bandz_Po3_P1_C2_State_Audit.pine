@@ -3726,7 +3726,7 @@ if p1On and poCalc and poSrcOk and barstate.isconfirmed and not na(time_close)
                         int si = p1FindSignal(e.side, rc.cisdBar, rc.cisdLevel)
                         if si >= 0
                             PoP1Cisd sg = p1Signals.get(si)
-                            if e.cisdBar != sg.bar or na(e.cisdBar)
+                            if na(e.cisdBar) or e.cisdBar != sg.bar
                                 e.cisdBar := sg.bar
                                 e.cisdConfirmedAt := sg.confirmedAt
                                 e.cisdOriginBar := sg.originBar
@@ -3736,7 +3736,7 @@ if p1On and poCalc and poSrcOk and barstate.isconfirmed and not na(time_close)
                             // Only CLOSED source C2, visible/eligible original
                             // Po3 record, and selected-engine chart CISD qualify.
                             if e.state == 1 and na(e.qualifiedAt) and
-                                 not na(e.c2ClosedAt) and poRecVisible(rc) and
+                                 not na(e.c2ClosedAt) and na(rc.cisdBrokeT) and poRecVisible(rc) and
                                  sg.confirmedAt <= time_close
                                 e.qualifiedAt := time_close
                                 e.lastReason := "C2_CISD_QUALIFIED"
@@ -3784,7 +3784,8 @@ if p1On and barstate.islast and not na(p1Table)
         if idx >= 0 and row <= p1Rows
             PoP1C2 e = p1Events.get(idx)
             string c2State = e.state == 0 ? "LIVE" : e.state == 1 ? "CLOSED PASS" : e.state == 2 ? "REJECT" : e.state == 3 ? "ENDED" : "UNVERIFIED"
-            string linkState = not na(e.brokenAt) ? "ENDED " + str.format_time(e.brokenAt, "MM-dd HH:mm", "Etc/UTC") :
+            string linkState = e.state == 2 ? "C2 REJECTED" : e.state == 4 ? "HTF UNVERIFIED" :
+                 not na(e.brokenAt) ? "ENDED " + str.format_time(e.brokenAt, "MM-dd HH:mm", "Etc/UTC") :
                  not na(e.qualifiedAt) ? "QUALIFIED " + str.format_time(e.qualifiedAt, "MM-dd HH:mm", "Etc/UTC") :
                  not na(e.cisdConfirmedAt) ? "PROVISIONAL" : e.lastReason
             color c = e.state == 2 or e.state == 4 ? color.orange : not na(e.brokenAt) ? color.gray :
