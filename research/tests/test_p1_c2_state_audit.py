@@ -95,6 +95,19 @@ class TestP1StaticSafety(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, appendix)
 
+    def test_unqualified_closed_c2_exposes_specific_blocker(self):
+        appendix = self.p1.split(P1_MARKER, 1)[1]
+        self.assertIn("p1BlockReason(PoP1C2 e) =>", appendix)
+        for reason in (
+            "RECORD_EVICTED", "SEQ_INACTIVE", "NON_CHART_CISD_SLOT",
+            "NO_ORIGINAL_LINK", "LINK_BEFORE_C2_EXTREME",
+            "RAW_SIGNAL_MISMATCH", "CISD_RECLAIMED",
+            "PO3_VISIBILITY_GATE", "ELIGIBLE_NOT_PROMOTED",
+            "ENDED / UNQUALIFIED",
+        ):
+            with self.subTest(reason=reason):
+                self.assertIn(reason, appendix)
+
     def test_bounded_memory_and_table_only_on_last_bar(self):
         appendix = self.p1.split(P1_MARKER, 1)[1]
         self.assertIn("while p1Events.size() > 40", appendix)
