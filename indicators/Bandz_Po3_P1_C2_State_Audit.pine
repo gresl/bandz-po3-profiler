@@ -3770,6 +3770,11 @@ if p1On and barstate.isconfirmed and not na(time_close)
                              not na(rc.cisdStartBar) and not na(rc.cisdLevel) and
                              not na(rc.c2ExtBar) and rc.cisdBar > rc.c2ExtBar and poSeqSlot == 0
                         bool sameLink = p1SameLink(e, rc)
+                        // If original reclamation and sequence termination occur
+                        // on the same bar, retain both independently.
+                        if e.linkActive and sameLink and not na(rc.cisdBrokeT) and na(e.reclaimedAt)
+                            e.reclaimedAt := time_close
+                            p1EmitLink("C2_CISD_RECLAIMED", e, rc.cisdBrokeT == time ? "CLOSE_BACK_THROUGH" : "ORIGINAL_RECLAIM_ALREADY_SET")
                         if e.linkActive and (not originalLinked or not sameLink)
                             string endedWhy = not rc.alive ? "SEQ_INACTIVE" :
                                  na(rc.cisdBar) or (not na(rc.c2ExtBar) and e.cisdBar <= rc.c2ExtBar) ? "C2_NEW_EXTREME_OR_LINK_CLEARED" :
@@ -3777,7 +3782,7 @@ if p1On and barstate.isconfirmed and not na(time_close)
                             p1EndLink(e, endedWhy)
 
                         int si = -1
-                        if originalLinked and not sameLink and e.state != 4
+                        if originalLinked and not sameLink and e.state != 4 and na(e.sequenceEndedAt)
                             si := p1FindSignal(e.side, rc.cisdBar, rc.cisdStartBar, rc.cisdLevel)
                             if si >= 0
                                 PoP1Cisd sg = p1Signals.get(si)
@@ -3812,7 +3817,7 @@ if p1On and barstate.isconfirmed and not na(time_close)
                         // raw-registry entry ages out. A reclaimed or ended
                         // link cannot qualify. Preserve original visibility rules.
                         if e.state == 1 and e.linkActive and originalLinked and p1SameLink(e, rc) and
-                             na(e.qualifiedAt) and na(e.reclaimedAt) and na(rc.cisdBrokeT) and
+                             na(e.sequenceEndedAt) and na(e.qualifiedAt) and na(e.reclaimedAt) and na(rc.cisdBrokeT) and
                              not na(e.c2ClosedAt) and e.cisdConfirmedAt <= time_close and poRecVisible(rc)
                             e.qualifiedAt := time_close
                             p1EmitLink("C2_CISD_QUALIFIED", e, poCisdEngine)
@@ -3827,7 +3832,7 @@ if p1On and barstate.isconfirmed and not na(time_close)
                         // intrabar render. Does not change structural state.
                         e.lastReason := e.state == 2 ? "C2_REJECTED" :
                              e.state == 4 ? "HTF_UNVERIFIED" :
-                             not rc.alive ? "SEQ_INACTIVE" :
+                             not rc.alive or not na(e.sequenceEndedAt) ? "SEQ_INACTIVE" :
                              poSeqSlot != 0 ? "NON_CHART_CISD_SLOT" :
                              not originalLinked ? "NO_ORIGINAL_LINK" :
                              not p1SameLink(e, rc) ? "RAW_SIGNAL_MISMATCH" :
