@@ -119,3 +119,32 @@ function call. Validate actual server alert message and close timestamp.
 Return raw OFF and recreate alert after test. Follow-up notification
 history is local to alert instance, so no historical followups expected.
 Qualified dispatch and production receiver remain disabled/unmodified.
+
+
+## Native multi-event Preview acceptance — 24 November 2026
+
+User export pine-logs-Bandz P2A_cfdd5.csv, Raw CISD enabled:
+9 valid JSON batches, 11 distinct events, 0 omitted, 0 invalid identities.
+All envelopes FOREXCOM:GBPUSD / 15 / 240 / V2, schema bandz.po3.p2a.v1.
+All event timestamps match enclosing bar close. Independently reconstructed
+every signal_id, c2_id, link_id and event_id from payload fields; exact matches.
+
+| UTC close Nov 23 | Event kinds | Side | Level |
+|---|---|---|---|
+| 00:15 | CISD_CONFIRMED | BULL | 1.30949 |
+| 02:15 | CISD_CONFIRMED | BEAR | 1.31081 |
+| 02:45 | CISD_CONFIRMED | BULL | 1.31115 |
+| 03:45 | CISD_CONFIRMED + C2_CISD_LINKED_EARLY | BEAR | 1.31082 |
+| 05:15 | C2_CISD_RECLAIMED | BEAR | 1.31082 |
+| 05:45 | C2_CISD_LINK_ENDED | BEAR | 1.31082 |
+| 06:00 | C2_REJECTED | BEAR | null |
+| 08:30 | CISD_CONFIRMED | BULL | 1.31265 |
+| 09:45 | CISD_CONFIRMED + C2_CISD_LINKED_EARLY | BEAR | 1.31231 |
+
+Both two-event batches preserve the shared raw signal identity and distinct
+event IDs. Six raw confirmations, two early links, one reclaim, one link end,
+one rejection. No qualification emitted. Native batching acceptance passed.
+User reports switching to Live and creating a TradingView alert on Nov 24.
+No actual server-delivered message received for validation yet. No production
+webhook activation established. P2A source unchanged; live delivery remains
+the acceptance gate before declaring P2A complete.
