@@ -52,3 +52,16 @@ RAM 3.0 GiB. Existing receiver and worker both active. No nginx changes.
 Boot enablement, same-event restart smoke, HTTPS routing/logging and actual
 TradingView webhook delivery remain pending. Local latencies are not
 end-to-end HTTPS latency measurements.
+
+## Restart acceptance — 24 November 2026
+
+Second synthetic source: first batch HTTP 200, 2 inserted (18 ms); restart
+and health check successful; identical delivery HTTP 200, 2 duplicates
+(8 ms); conflict HTTP 409 (6 ms); unknown token HTTP 404 (3 ms).
+Persisted counts 2|3|4|1. Synthetic source disabled. bandz-ingest enabled
+at boot; all three services active. P3B local acceptance complete.
+Nginx 1.24.0 Ubuntu configuration valid; webhook HTTPS vhost uses safe
+method-only access log, error_log /dev/null crit, existing /hook/ upstream
+8080. Hostname resolves locally to 127.0.1.1, not public DNS evidence.
+NTP synchronized. Proceed to separately scoped HTTPS route; external
+sender IP, TLS delivery and latency still to verify.
