@@ -34,3 +34,21 @@ Provider failures, retry behavior, rate limits, token-safe reverse proxy
 logging, TLS, retention, source version namespace and operational metrics
 remain P3C gates. Native P2B revised build compiled per user; first real
 qualified delivery pending.
+
+## VPS local staging acceptance — 24 November 2026
+
+Installed pinned commit add3be9b2119ff4c8597cd5a3bf5fea5a709d315. All
+required Ubuntu packages were already installed (no upgrades or removals).
+Initial deployment stopped because the existing database has restricted
+CONNECT privileges. Recovery: GRANT CONNECT ON DATABASE po3journal TO
+bandzingest only; peer authentication then passed, no pg_hba change.
+Effective public relation access check (including column grants): zero.
+Schema and role grants installed; service active on 127.0.0.1:8081 only.
+Local synthetic smoke: HTTP 200 / 2 inserted (19 ms), HTTP 200 / 2 duplicates
+(6 ms), HTTP 409 conflict (5 ms), HTTP 404 unknown token (3 ms).
+Persisted counts events|deliveries|associations|conflicts = 2|3|4|1.
+Synthetic source disabled. Service memory 23.1M, tasks 7, host available
+RAM 3.0 GiB. Existing receiver and worker both active. No nginx changes.
+Boot enablement, same-event restart smoke, HTTPS routing/logging and actual
+TradingView webhook delivery remain pending. Local latencies are not
+end-to-end HTTPS latency measurements.
