@@ -1,0 +1,45 @@
+name: P3B PostgreSQL receiver
+on:
+  push:
+    branches:
+      - feature/p3b-receiver-20261124
+  pull_request:
+    paths:
+      - 'research/p3/**'
+      - 'research/tests/test_p3b_receiver.py'
+      - '.github/workflows/p3b-receiver.yml'
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ciadmin
+          POSTGRES_DB: bandz_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bandz_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      BANDZ_TEST_ADMIN_DSN: postgresql://postgres:ciadmin@127.0.0.1:5432/bandz_ci
+      BANDZ_TEST_DSN: postgresql://bandzingest:ciapp@127.0.0.1:5432/bandz_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install 'psycopg[binary]>=3.2,<4'
+      - name: Install isolated schema and app grants
+        run: |
+          psql "$BANDZ_TEST_ADMIN_DSN" -v ON_ERROR_STOP=1 -c "CREATE ROLE bandzingest LOGIN PASSWORD 'ciapp'; CREATE TABLE public.production_guard (id int);"
+          psql "$BANDZ_TEST_ADMIN_DSN" -v ON_ERROR_STOP=1 -f research/p3/schema_proposal.sql
+          psql "$BANDZ_TEST_ADMIN_DSN" -v ON_ERROR_STOP=1 -f research/p3/grants.sql
+      - run: python -m unittest discover -s research/tests -p 'test_p3_bandz_batch.py' -v
+      - run: python -m unittest discover -s research/tests -p 'test_p3b_receiver.py' -v
