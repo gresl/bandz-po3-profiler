@@ -3588,16 +3588,18 @@ if v2LogWindow
 
 
 // =============================================================================
-// P1 — OBSERVATIONAL Po3/C2 STATE AUDIT (NOVEMBER 23, 2026)
-// This block is append-only relative to the frozen visual-test script.
-// No writes to PoRec / PoSeq / CISD engine arrays; no alerts.
-// Structural C2 close ≠ chart CISD close ≠ qualified C2+CISD association.
-// Event timestamps are actual known chart / source closes, never pivot origins.
+// P1 — OBSERVATIONAL Po3/C2 STATE AUDIT (REVISION B, NOVEMBER 24, 2026)
+// Append-only relative to the frozen visual-test script. No original state writes.
+// Event ledger timestamps = first confirmed chart close at which observed.
+// Raw confirmation, early linkage, structural C2 close, qualification and
+// reclamation are independent facts; later outcomes never erase earlier facts.
 // =============================================================================
 const string P1_G = "P1 · Po3/C2 lifecycle audit (read-only)"
 bool p1On = input.bool(false, "Show Po3/C2 lifecycle audit", group=P1_G,
-     tooltip="Read-only comparison of live C2, HTF-closed C2, selected-engine chart CISD and qualified linkage. No alert or trade entry.")
+     tooltip="Read-only audit of selected-engine closed CISDs and original Po3 linkage. No alerts or trade entries.")
 int p1Rows = input.int(6, "Recent C2 records", minval=3, maxval=7, group=P1_G)
+string p1View = input.string("C2 summary", "Audit view", options=["C2 summary", "Event history"], group=P1_G)
+
 type PoP1Cisd
     int side
     int bar
@@ -3611,19 +3613,47 @@ type PoP1C2
     int c2StartBar
     int firstSeenAt
     float extreme
-    int state          // 0 candidate, 1 C2 confirmed, 2 rejected, 3 ended, 4 unverified gap
-    int c2ClosedAt
+    int state          // 0 live, 1 closed pass, 2 rejected, 4 unverified (structural facts only)
+    int c2ClosedAt     // observed HTF close, including rejection
     int cisdBar
     int cisdConfirmedAt
     int cisdOriginBar
     float cisdLevel
     int linkedObservedAt
+    int firstEarlyAt
     int qualifiedAt
-    int brokenAt
-    string lastReason
+    int reclaimedAt
+    int linkEndedAt
+    int sequenceEndedAt
+    bool linkActive = false
+    string linkEndReason = ""
+    string lastReason = ""
+
+type PoP1Event
+    string kind
+    int observedAt
+    int side
+    int c2Start
+    int cisdAt
+    float level
+    string reason
 
 var array<PoP1Cisd> p1Signals = array.new<PoP1Cisd>()
 var array<PoP1C2> p1Events = array.new<PoP1C2>()
+var array<PoP1Event> p1Ledger = array.new<PoP1Event>()
+
+// Store primitive values, never mutable PoRec/PoP1C2 references.
+p1Emit(string kind, int side, int c2Start, int cisdAt, float level, string reason) =>
+    p1Ledger.push(PoP1Event.new(kind, time_close, side, c2Start, cisdAt, level, reason))
+    while p1Ledger.size() > 192
+        p1Ledger.shift()
+    0
+
+p1EmitC2(string kind, PoP1C2 e, string reason) =>
+    p1Emit(kind, e.side, e.c2Start, na, na, reason)
+
+p1EmitLink(string kind, PoP1C2 e, string reason) =>
+    p1Emit(kind, e.side, e.c2Start, e.cisdConfirmedAt, e.cisdLevel, reason)
 
 p1FindEvent(int side, int start) =>
     int res = -1
@@ -3635,19 +3665,25 @@ p1FindEvent(int side, int start) =>
                 break
     res
 
-p1FindSignal(int side, int bar, float level) =>
+p1FindSignal(int side, int bar, int origin, float level) =>
     int res = -1
     if p1Signals.size() > 0
         for j = p1Signals.size() - 1 to 0
             PoP1Cisd sg = p1Signals.get(j)
-            if sg.side == side and sg.bar == bar and math.abs(sg.level - level) <= syminfo.mintick
+            if sg.side == side and sg.bar == bar and sg.originBar == origin and sg.level == level
                 res := j
                 break
     res
 
-// Only current C2 of the currently selected source timeframe is eligible
-// for a NEW candidate / close event. Historical C2s cannot be "confirmed"
-// simply because a later bar is closed.
+p1CaptureSignal(int side, int origin, float level) =>
+    if p1FindSignal(side, bar_index, origin, level) == -1
+        p1Signals.push(PoP1Cisd.new(side, bar_index, time_close, level, origin))
+        p1Emit("CISD_CONFIRMED", side, na, time_close, level, poCisdEngine)
+        while p1Signals.size() > 256
+            p1Signals.shift()
+    0
+
+// Only a currently forming source C2 can create a new structural record.
 p1ObserveCurrent(PoSeq sq, bool sourceClosing, int sourceStart) =>
     if sq.alive and poSrcOk and sq.i2 >= 0
         PoCandle c2 = poSrcLane.cs.get(sq.i2)
@@ -3663,6 +3699,7 @@ p1ObserveCurrent(PoSeq sq, bool sourceClosing, int sourceStart) =>
                 e.state := 0
                 e.lastReason := "C2_SWEEP_LIVE"
                 p1Events.push(e)
+                p1EmitC2("C2_CANDIDATE", e, "SWEEP_OBSERVED")
                 while p1Events.size() > 40
                     p1Events.shift()
             else
@@ -3670,161 +3707,193 @@ p1ObserveCurrent(PoSeq sq, bool sourceClosing, int sourceStart) =>
             if e.state == 0
                 e.extreme := sq.side == 1 ? c2.l : c2.h
                 if sourceClosing
-                    // The CLOSED HTF C2 must have returned strictly inside C1.
-                    // poEvalSide() allows an OPEN C2 without this condition.
+                    e.c2ClosedAt := time_close
                     if sq.closedIn
                         e.state := 1
-                        e.c2ClosedAt := time_close
                         e.lastReason := "C2_CLOSED_INSIDE_C1"
+                        p1EmitC2("C2_CONFIRMED", e, e.lastReason)
                     else
                         e.state := 2
                         e.lastReason := "C2_CLOSED_OUTSIDE_C1"
+                        p1EmitC2("C2_REJECTED", e, e.lastReason)
     0
 
-if p1On and poCalc and poSrcOk and barstate.isconfirmed and not na(time_close)
-    // Raw selected-engine CISD confirmation timestamps, regardless of Po3.
-    // Never use a historical line origin as evidence that a CISD was known then.
-    if poCisdEngine == "Legacy" and (poCisdNewBull or poCisdNewBear) and poCisds.size() > 0
+// Terminate the CURRENT link without deleting its confirmation or ledger history.
+p1EndLink(PoP1C2 e, string reason) =>
+    if e.linkActive
+        e.linkActive := false
+        e.linkEndedAt := time_close
+        e.linkEndReason := reason
+        p1EmitLink("C2_CISD_LINK_ENDED", e, reason)
+    0
+
+p1SameLink(PoP1C2 e, PoRec rc) =>
+    not na(e.cisdBar) and not na(rc.cisdBar) and
+         e.cisdBar == rc.cisdBar and e.cisdOriginBar == rc.cisdStartBar and e.cisdLevel == rc.cisdLevel
+
+// Raw chart confirmations are independent of whether a source C2 exists.
+// Original chart engine flags are used without changing either detector.
+if p1On and barstate.isconfirmed and not na(time_close)
+    if poCalc and poCisdEngine == "Legacy" and (poCisdNewBull or poCisdNewBear) and poCisds.size() > 0
         PoCisd cz = poCisds.last()
         if cz.confirmBar == bar_index
-            p1Signals.push(PoP1Cisd.new(cz.bull ? 1 : -1, bar_index, time_close, cz.level, cz.startBar))
+            p1CaptureSignal(cz.bull ? 1 : -1, cz.startBar, cz.level)
     if poCisdEngine == "V2" and (v2rNewBull or v2rNewBear) and v2rEvents.size() > 0
         for j = 0 to v2rEvents.size() - 1
             PoV2PivotEvent ve = v2rEvents.get(j)
             if ve.confirmBar == bar_index and ve.state == 1 and ve.confirmAt == time_close
-                p1Signals.push(PoP1Cisd.new(ve.bull ? 1 : -1, bar_index, time_close, ve.level, ve.originBar))
-    while p1Signals.size() > 256
-        p1Signals.shift()
+                p1CaptureSignal(ve.bull ? 1 : -1, ve.originBar, ve.level)
 
-    int sourceStart = time(poSrcLane.tf)
-    int sourceEnd = time_close(poSrcLane.tf)
-    bool sourceClosing = not na(sourceEnd) and time_close == sourceEnd
-    p1ObserveCurrent(poSeqBear, sourceClosing, sourceStart)
-    p1ObserveCurrent(poSeqBull, sourceClosing, sourceStart)
+    if poCalc and poSrcOk
+        int sourceStart = time(poSrcLane.tf)
+        int sourceEnd = time_close(poSrcLane.tf)
+        bool sourceClosing = not na(sourceEnd) and time_close == sourceEnd
+        p1ObserveCurrent(poSeqBear, sourceClosing, sourceStart)
+        p1ObserveCurrent(poSeqBull, sourceClosing, sourceStart)
 
-    // Reconcile only with existing ORIGINAL Bandz PoRec linkage and filters.
-    // Confirmed C2 is a structural result. Qualified C2+CISD also needs a
-    // confirmed raw CISD from the SELECTED chart engine, source slot = Chart,
-    // active sequence and original Po3 visibility gates.
-    if p1Events.size() > 0
-        for j = 0 to p1Events.size() - 1
-            PoP1C2 e = p1Events.get(j)
-            if e.state == 0 and poSrcNew and e.c2Start != sourceStart
-                // Session gaps or non-dividing chart/HTF boundaries: never
-                // retrospectively assume a close that was not observed.
-                e.state := 4
-                e.lastReason := "HTF_CLOSE_NOT_OBSERVED"
-            if e.state == 0 or e.state == 1
-                int ri = poFindRec(e.side, e.c2StartBar)
-                if ri >= 0
-                    PoRec rc = poRecs.get(ri)
-                    bool originalLinked = rc.alive and not na(rc.cisdBar) and
-                         not na(rc.cisdLevel) and not na(rc.c2ExtBar) and rc.cisdBar > rc.c2ExtBar
-                    if originalLinked and poSeqSlot == 0
-                        // A CISD link is accepted only if its *raw* event at the
-                        // same chart candle and level was observed at closed bar.
-                        int si = p1FindSignal(e.side, rc.cisdBar, rc.cisdLevel)
-                        if si >= 0
-                            PoP1Cisd sg = p1Signals.get(si)
-                            if na(e.cisdBar) or e.cisdBar != sg.bar
+        if p1Events.size() > 0
+            for j = 0 to p1Events.size() - 1
+                PoP1C2 e = p1Events.get(j)
+                if e.state == 0 and poSrcNew and e.c2Start != sourceStart
+                    e.state := 4
+                    e.lastReason := "HTF_CLOSE_NOT_OBSERVED"
+                    p1EmitC2("C2_UNVERIFIED", e, e.lastReason)
+                // Include the rejecting close itself so a same-bar raw link is
+                // recorded, but never qualified or labelled an early link.
+                bool rejectNow = e.state == 2 and e.c2ClosedAt == time_close
+                bool gapNow = e.state == 4 and na(e.sequenceEndedAt)
+                if e.state == 0 or e.state == 1 or rejectNow or gapNow
+                    int ri = poFindRec(e.side, e.c2StartBar)
+                    if ri >= 0
+                        PoRec rc = poRecs.get(ri)
+                        bool originalLinked = rc.alive and not na(rc.cisdBar) and
+                             not na(rc.cisdStartBar) and not na(rc.cisdLevel) and
+                             not na(rc.c2ExtBar) and rc.cisdBar > rc.c2ExtBar and poSeqSlot == 0
+                        bool sameLink = p1SameLink(e, rc)
+                        if e.linkActive and (not originalLinked or not sameLink)
+                            string endedWhy = not rc.alive ? "SEQ_INACTIVE" :
+                                 na(rc.cisdBar) or (not na(rc.c2ExtBar) and e.cisdBar <= rc.c2ExtBar) ? "C2_NEW_EXTREME_OR_LINK_CLEARED" :
+                                 not sameLink ? "LINK_REPLACED" : "LINK_NO_LONGER_ELIGIBLE"
+                            p1EndLink(e, endedWhy)
+
+                        int si = -1
+                        if originalLinked and not sameLink and e.state != 4
+                            si := p1FindSignal(e.side, rc.cisdBar, rc.cisdStartBar, rc.cisdLevel)
+                            if si >= 0
+                                PoP1Cisd sg = p1Signals.get(si)
                                 e.cisdBar := sg.bar
                                 e.cisdConfirmedAt := sg.confirmedAt
                                 e.cisdOriginBar := sg.originBar
                                 e.cisdLevel := sg.level
                                 e.linkedObservedAt := time_close
-                                e.lastReason := e.state == 0 ? "LINKED_WHILE_C2_LIVE" : "LINKED_AFTER_C2_CLOSE"
-                            // Only CLOSED source C2, visible/eligible original
-                            // Po3 record, and selected-engine chart CISD qualify.
-                            if e.state == 1 and na(e.qualifiedAt) and
-                                 not na(e.c2ClosedAt) and na(rc.cisdBrokeT) and poRecVisible(rc) and
-                                 sg.confirmedAt <= time_close
-                                e.qualifiedAt := time_close
-                                e.lastReason := "C2_CISD_QUALIFIED"
-                    else if e.state == 0 and not na(e.cisdBar)
-                        // A growing C2 can clear a provisional link. Do NOT
-                        // carry it forward as a qualified or pending signal.
-                        e.cisdBar := na
-                        e.cisdConfirmedAt := na
-                        e.cisdOriginBar := na
-                        e.cisdLevel := na
-                        e.linkedObservedAt := na
-                        e.lastReason := "PROVISIONAL_LINK_CLEARED"
-                    if not na(e.qualifiedAt) and na(e.brokenAt)
-                        if not na(rc.cisdBrokeT)
-                            e.brokenAt := time_close
-                            e.lastReason := "CISD_CLOSE_RECLAIMED"
-                        else if not rc.alive or na(rc.cisdBar)
-                            e.brokenAt := time_close
-                            e.lastReason := "ORIGINAL_LINK_ENDED"
-                    if e.state == 1 and not rc.alive
-                        e.state := 3
-                        if na(e.brokenAt)
-                            e.lastReason := "ORIGINAL_C2_SEQUENCE_ENDED"
-                else if e.state == 1
-                    // Older C2 may age out of Bandz's bounded 10-record cache.
-                    // This is not proof of rejection / price invalidation.
-                    e.state := 3
-                    e.lastReason := "ORIGINAL_RECORD_EVICTED"
+                                e.qualifiedAt := na
+                                e.reclaimedAt := na
+                                e.linkEndedAt := na
+                                e.linkEndReason := ""
+                                e.linkActive := true
+                                // A link first observed on the HTF closing bar
+                                // is AT_CLOSE, not early, even if C2 had been live.
+                                bool early = e.state == 0
+                                if early and na(e.firstEarlyAt)
+                                    e.firstEarlyAt := time_close
+                                string kind = early ? "C2_CISD_LINKED_EARLY" :
+                                     e.c2ClosedAt == time_close ? "C2_CISD_LINKED_AT_CLOSE" : "C2_CISD_LINKED_AFTER_CLOSE"
+                                p1EmitLink(kind, e, poCisdEngine)
 
-// Read-only diagnosis for a C2 that has CLOSED PASS but cannot qualify yet.
-p1BlockReason(PoP1C2 e) =>
-    string why = "UNKNOWN"
-    int ri = poFindRec(e.side, e.c2StartBar)
-    if ri == -1
-        why := "RECORD_EVICTED"
-    else
-        PoRec rc = poRecs.get(ri)
-        if not rc.alive
-            why := "SEQ_INACTIVE"
-        else if poSeqSlot != 0
-            why := "NON_CHART_CISD_SLOT"
-        else if na(rc.cisdBar) or na(rc.cisdLevel)
-            why := "NO_ORIGINAL_LINK"
-        else if na(rc.c2ExtBar) or rc.cisdBar <= rc.c2ExtBar
-            why := "LINK_BEFORE_C2_EXTREME"
-        else if p1FindSignal(e.side, rc.cisdBar, rc.cisdLevel) == -1
-            why := "RAW_SIGNAL_MISMATCH"
-        else if not na(rc.cisdBrokeT)
-            why := "CISD_RECLAIMED"
-        else if not poRecVisible(rc)
-            why := "PO3_VISIBILITY_GATE"
-        else
-            why := "ELIGIBLE_NOT_PROMOTED"
-    why
+                        // Reclamation is observed independently of qualification.
+                        // rc.cisdBrokeT is the original candle OPEN time. The
+                        // audit records when its close was first observed, not
+                        // a reconstructed historical timestamp.
+                        if e.linkActive and p1SameLink(e, rc) and not na(rc.cisdBrokeT) and na(e.reclaimedAt)
+                            e.reclaimedAt := time_close
+                            p1EmitLink("C2_CISD_RECLAIMED", e, rc.cisdBrokeT == time ? "CLOSE_BACK_THROUGH" : "ORIGINAL_RECLAIM_ALREADY_SET")
 
-// Audit renders only at chart's last bar. No output modifies engine signals.
-var table p1Table = p1On ? table.new(position.middle_right, 7, 9,
+                        // A frozen matched raw identity suffices after its
+                        // raw-registry entry ages out. A reclaimed or ended
+                        // link cannot qualify. Preserve original visibility rules.
+                        if e.state == 1 and e.linkActive and originalLinked and p1SameLink(e, rc) and
+                             na(e.qualifiedAt) and na(e.reclaimedAt) and na(rc.cisdBrokeT) and
+                             not na(e.c2ClosedAt) and e.cisdConfirmedAt <= time_close and poRecVisible(rc)
+                            e.qualifiedAt := time_close
+                            p1EmitLink("C2_CISD_QUALIFIED", e, poCisdEngine)
+
+                        if e.state == 2 or e.state == 4
+                            p1EndLink(e, e.state == 2 ? "C2_REJECTED" : "HTF_CLOSE_UNVERIFIED")
+                        if (not rc.alive or e.state == 2 or e.state == 4) and na(e.sequenceEndedAt)
+                            e.sequenceEndedAt := time_close
+                            p1EmitC2("C2_SEQUENCE_ENDED", e, e.state == 2 ? "C2_REJECTED" : e.state == 4 ? "HTF_CLOSE_UNVERIFIED" : "ORIGINAL_SEQ_INACTIVE")
+
+                        // Snapshot blocker at confirmed close, not at a later
+                        // intrabar render. Does not change structural state.
+                        e.lastReason := e.state == 2 ? "C2_REJECTED" :
+                             e.state == 4 ? "HTF_UNVERIFIED" :
+                             not rc.alive ? "SEQ_INACTIVE" :
+                             poSeqSlot != 0 ? "NON_CHART_CISD_SLOT" :
+                             not originalLinked ? "NO_ORIGINAL_LINK" :
+                             not p1SameLink(e, rc) ? "RAW_SIGNAL_MISMATCH" :
+                             not na(e.reclaimedAt) ? "CISD_RECLAIMED" :
+                             not poRecVisible(rc) ? "PO3_VISIBILITY_GATE" :
+                             not na(e.qualifiedAt) ? "QUALIFIED" :
+                             e.state == 0 ? "LIVE_LINK" : "ELIGIBLE_NOT_PROMOTED"
+                    else
+                        p1EndLink(e, "RECORD_EVICTED")
+                        if na(e.sequenceEndedAt)
+                            e.sequenceEndedAt := time_close
+                            p1EmitC2("C2_SEQUENCE_UNTRACKED", e, "RECORD_EVICTED_NOT_PRICE_INVALIDATION")
+                        e.lastReason := "RECORD_EVICTED"
+
+p1Fmt(int t) =>
+    na(t) ? "—" : str.format_time(t, "MM-dd HH:mm", "Etc/UTC")
+
+// Summary = latest link snapshot per C2; Event history = immutable transition
+// rows (including older links). No output modifies engine signals.
+var table p1Table = p1On ? table.new(position.middle_right, 9, 13,
      bgcolor=color.new(color.rgb(21, 26, 34), 9), border_width=1,
      border_color=color.new(color.gray, 55)) : na
 
 if p1On and barstate.islast and not na(p1Table)
-    table.cell(p1Table, 0, 0, "C2 start UTC", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 1, 0, "First seen UTC", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 2, 0, "Side", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 3, 0, "C2 close UTC", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 4, 0, "C2 state", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 5, 0, "CISD close UTC", text_color=color.white, text_size=size.tiny)
-    table.cell(p1Table, 6, 0, "Link / qualification", text_color=color.white, text_size=size.tiny)
-    for row = 1 to 8
-        int idx = p1Events.size() - row
-        if idx >= 0 and row <= p1Rows
-            PoP1C2 e = p1Events.get(idx)
-            string c2State = e.state == 0 ? "LIVE" : e.state == 1 ? "CLOSED PASS" : e.state == 2 ? "REJECT" : e.state == 3 ? "ENDED" : "UNVERIFIED"
-            string linkState = e.state == 2 ? "C2 REJECTED" : e.state == 4 ? "HTF UNVERIFIED" :
-                 not na(e.brokenAt) ? "ENDED " + str.format_time(e.brokenAt, "MM-dd HH:mm", "Etc/UTC") :
-                 not na(e.qualifiedAt) ? "QUALIFIED " + str.format_time(e.qualifiedAt, "MM-dd HH:mm", "Etc/UTC") :
-                 e.state == 3 ? "ENDED / UNQUALIFIED" :
-                 e.state == 1 ? "BLOCKED: " + p1BlockReason(e) :
-                 not na(e.cisdConfirmedAt) ? "PROVISIONAL" : e.lastReason
-            color c = e.state == 2 or e.state == 4 ? color.orange : not na(e.brokenAt) ? color.gray :
-                 not na(e.qualifiedAt) ? color.lime : e.state == 1 ? color.aqua : color.yellow
-            table.cell(p1Table, 0, row, str.format_time(e.c2Start, "MM-dd HH:mm", "Etc/UTC"), text_color=color.silver, text_size=size.tiny)
-            table.cell(p1Table, 1, row, str.format_time(e.firstSeenAt, "MM-dd HH:mm", "Etc/UTC"), text_color=color.silver, text_size=size.tiny)
-            table.cell(p1Table, 2, row, e.side == 1 ? "BULL" : "BEAR", text_color=c, text_size=size.tiny)
-            table.cell(p1Table, 3, row, na(e.c2ClosedAt) ? "—" : str.format_time(e.c2ClosedAt, "MM-dd HH:mm", "Etc/UTC"), text_color=c, text_size=size.tiny)
-            table.cell(p1Table, 4, row, c2State, text_color=c, text_size=size.tiny)
-            table.cell(p1Table, 5, row, na(e.cisdConfirmedAt) ? "—" : str.format_time(e.cisdConfirmedAt, "MM-dd HH:mm", "Etc/UTC"), text_color=c, text_size=size.tiny)
-            table.cell(p1Table, 6, row, linkState, text_color=c, text_size=size.tiny)
+    bool summary = p1View == "C2 summary"
+    array<string> heads = summary ? array.from("C2 start UTC", "Seen UTC", "Side", "C2 close UTC", "C2 result", "CISD close UTC", "First early UTC", "Qualified UTC", "Latest link / status UTC") :
+         array.from("Observed UTC", "Event", "Side", "C2 start UTC", "CISD close UTC", "Level", "Reason", "", "")
+    for col = 0 to 8
+        table.cell(p1Table, col, 0, heads.get(col), text_color=color.white, text_size=size.tiny)
+    for row = 1 to 12
+        for col = 0 to 8
+            table.cell(p1Table, col, row, "", text_size=size.tiny)
+        if summary
+            int idx = p1Events.size() - row
+            if idx >= 0 and row <= p1Rows
+                PoP1C2 e = p1Events.get(idx)
+                string c2State = e.state == 0 ? "LIVE" : e.state == 1 ? "CLOSED PASS" : e.state == 2 ? "REJECT" : "UNVERIFIED"
+                string linkState = not na(e.reclaimedAt) ? "RECLAIM " + p1Fmt(e.reclaimedAt) :
+                     not na(e.linkEndedAt) ? "END " + p1Fmt(e.linkEndedAt) + " " + e.linkEndReason :
+                     not na(e.qualifiedAt) ? "QUALIFIED" :
+                     not na(e.sequenceEndedAt) ? "SEQ END " + p1Fmt(e.sequenceEndedAt) :
+                     e.state == 1 ? "BLOCKED: " + e.lastReason :
+                     e.linkActive ? "LIVE LINK" : e.lastReason
+                color c = e.state == 2 or e.state == 4 ? color.orange :
+                     not na(e.reclaimedAt) or not na(e.linkEndedAt) ? color.gray :
+                     not na(e.qualifiedAt) ? color.lime : e.state == 1 ? color.aqua : color.yellow
+                table.cell(p1Table, 0, row, p1Fmt(e.c2Start), text_color=color.silver, text_size=size.tiny)
+                table.cell(p1Table, 1, row, p1Fmt(e.firstSeenAt), text_color=color.silver, text_size=size.tiny)
+                table.cell(p1Table, 2, row, e.side == 1 ? "BULL" : "BEAR", text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 3, row, p1Fmt(e.c2ClosedAt), text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 4, row, c2State, text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 5, row, p1Fmt(e.cisdConfirmedAt), text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 6, row, p1Fmt(e.firstEarlyAt), text_color=color.yellow, text_size=size.tiny)
+                table.cell(p1Table, 7, row, p1Fmt(e.qualifiedAt), text_color=color.lime, text_size=size.tiny)
+                table.cell(p1Table, 8, row, linkState, text_color=c, text_size=size.tiny)
         else
-            for col = 0 to 6
-                table.cell(p1Table, col, row, "", text_size=size.tiny)
+            int idx = p1Ledger.size() - row
+            if idx >= 0
+                PoP1Event ev = p1Ledger.get(idx)
+                color c = ev.kind == "C2_CISD_QUALIFIED" ? color.lime :
+                     ev.kind == "C2_CISD_LINKED_EARLY" ? color.yellow :
+                     ev.kind == "C2_CISD_RECLAIMED" or ev.kind == "C2_REJECTED" ? color.orange : color.silver
+                table.cell(p1Table, 0, row, p1Fmt(ev.observedAt), text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 1, row, ev.kind, text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 2, row, ev.side == 1 ? "BULL" : "BEAR", text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 3, row, p1Fmt(ev.c2Start), text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 4, row, p1Fmt(ev.cisdAt), text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 5, row, na(ev.level) ? "—" : str.tostring(ev.level, format.mintick), text_color=c, text_size=size.tiny)
+                table.cell(p1Table, 6, row, ev.reason, text_color=c, text_size=size.tiny)
