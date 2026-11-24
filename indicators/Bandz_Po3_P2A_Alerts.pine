@@ -3604,6 +3604,9 @@ string p1View = input.string("C2 summary", "Audit view", options=["C2 summary", 
 const string P2_G = "P2A · Trading alerts (experimental)"
 string p2Mode = input.string("Off", "Alerts mode", options=["Off", "Preview", "Live"], group=P2_G)
 bool p2On = p2Mode != "Off"
+// First prototype intentionally limited to the validated standard 15m / 4H chart slot.
+bool p2Supported = chart.is_standard and timeframe.isminutes and timeframe.multiplier == 15 and
+     poSrcOk and timeframe.in_seconds(poSrcLane.tf) == 14400 and poSeqSlot == 0
 bool p2Raw = input.bool(false, "Raw CISD confirmations", group=P2_G)
 bool p2Early = input.bool(true, "Early C2 + CISD links", group=P2_G)
 bool p2C2 = input.bool(false, "Structural C2 confirmed", group=P2_G)
@@ -3771,7 +3774,7 @@ p1SameLink(PoP1C2 e, PoRec rc) =>
 
 // Raw chart confirmations are independent of whether a source C2 exists.
 // Original chart engine flags are used without changing either detector.
-if (p1On or p2On) and barstate.isconfirmed and not na(time_close)
+if (p1On or (p2On and p2Supported)) and barstate.isconfirmed and not na(time_close)
     p2Queue.clear()
     if poCalc and poCisdEngine == "Legacy" and (poCisdNewBull or poCisdNewBear) and poCisds.size() > 0
         PoCisd cz = poCisds.last()
@@ -4000,10 +4003,13 @@ p2Remember(array<string> cache, string key) =>
             cache.shift()
     0
 
-// Preview runs historical selection with the same rules but logs only the
-// chosen interval. Live deliberately does NOT seed "notified" from history.
-bool p2Dispatch = p2On and barstate.isconfirmed and not na(time_close) and
-     (p2Mode == "Preview" or (p2Mode == "Live" and barstate.isrealtime))
+// Preview simulates an alert instance started at the chosen UTC boundary.
+// Neither Live nor Preview seeds notified state before its dispatch begins.
+bool p2Dispatch = p2On and p2Supported and barstate.isconfirmed and not na(time_close) and
+     ((p2Mode == "Preview" and time_close >= p2From and time_close < p2To) or
+     (p2Mode == "Live" and barstate.isrealtime))
+if p2On and not p2Supported and barstate.islastconfirmedhistory
+    log.warning("P2A disabled: requires standard 15m candles, 4H profile, Chart CISD slot.")
 if p2Dispatch and p2Queue.size() > 0
     string body = ""
     int count = 0
