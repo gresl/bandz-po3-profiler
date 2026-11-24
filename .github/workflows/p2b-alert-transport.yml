@@ -1,0 +1,21 @@
+name: P2B alert transport safety
+on:
+  push:
+    branches:
+      - feature/p2b-qualified-alerts-20261124
+  pull_request:
+    paths:
+      - 'indicators/Bandz_Po3_P2B_Alerts.pine'
+      - 'research/tests/test_p2b_alert_transport.py'
+      - '.github/workflows/p2b-alert-transport.yml'
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s research/tests -p 'test_p1_c2_state_audit.py' -v
+      - run: python3 -m unittest discover -s research/tests -p 'test_p2a_alert_transport.py' -v
+      - run: python3 -m unittest discover -s research/tests -p 'test_p2b_alert_transport.py' -v
