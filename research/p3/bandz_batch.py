@@ -4,7 +4,7 @@ The caller must authenticate the registered source before invoking decode.
 Decimal preserves the price representation emitted by Pine format.mintick.
 """
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 import json
 import re
 
@@ -90,7 +90,7 @@ def decode(raw: bytes, source: Source):
     try:
         b = json.loads(raw.decode("utf-8"), parse_float=Decimal,
                        parse_constant=bad_constant, object_pairs_hook=object_pairs)
-    except (UnicodeError, ValueError, RecursionError) as exc:
+    except (UnicodeError, ValueError, RecursionError, DecimalException) as exc:
         raise InvalidBatch("invalid JSON") from exc
     require(type(b) is dict and set(b) == ENVELOPE, "envelope fields")
     require(b["schema"] == SCHEMA, "schema")
