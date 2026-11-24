@@ -1,0 +1,19 @@
+name: P3A batch decoder
+on:
+  push:
+    branches:
+      - feature/p3a-webhook-ingestion-20261124
+  pull_request:
+    paths:
+      - 'research/p3/**'
+      - 'research/tests/test_p3_bandz_batch.py'
+      - '.github/workflows/p3a-batch.yml'
+permissions:
+  contents: read
+jobs:
+  decoder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s research/tests -p 'test_p3_bandz_batch.py' -v
