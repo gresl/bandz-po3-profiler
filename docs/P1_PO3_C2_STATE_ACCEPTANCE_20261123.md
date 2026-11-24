@@ -1,79 +1,98 @@
-# P1 — Po3 / C2 event-state verification (23 November 2026)
+# P1B — Po3 / C2 lifecycle event verification (24 November 2026)
 
-## Purpose and source separation
+This revision supersedes the initial P1 audit procedure. The original clean
+`Bandz_Po3_V2_Visual_Test.pine` is unchanged. The P1 script is still a separate,
+opt-in, read-only audit build; no live alerts or trade execution.
 
-This is a **read-only audit build** for Bandz Po3 V2. It is not the clean trading-test indicator. The original [Bandz_Po3_V2_Visual_Test.pine](../indicators/Bandz_Po3_V2_Visual_Test.pine) is **unchanged**. Full CISD research and original legacy references remain preserved on their own branches.
+## Motivation and evidence
 
-- Audit script: `indicators/Bandz_Po3_P1_C2_State_Audit.pine`.
-- Branch: `feature/p1-po3-c2-state-audit-20261123`.
-- The only change to the base prefix is the indicator title. The P1 audit is appended after all full Bandz Po3 / Legacy / V2 code.
-- P1 is **OFF by default**. There is no `alert()`, `alertcondition()`, journal integration, order entry, or change to detector thresholds.
-- P1 first implementation supports **Chart** sequence-CISD slot only (chart timeframe 15m + higher-timeframe profile is supported). On a chart below 3m/5m with a lower-timeframe sequence slot selected, the chart-CISD qualification deliberately does not trigger.
+| GBPUSD 15m / 4H C2 | C2 start UTC | First observed | CISD close | C2 close | Prior P1 result |
+|---|---|---|---|---|---|
+| Nov 23 2026, bearish | 06:00 | 06:15 | 09:15 | 10:00 | CLOSED PASS / CISD_RECLAIMED |
+| Sep 4 2026, bearish | 05:00 | 06:15 | 08:00 | 09:00 | CLOSED PASS / CISD_RECLAIMED |
 
-## What the code actually does (verified from source)
+Both are user-provided Replay observations. Neither screenshot determines the
+exact reclaim close or establishes a positive qualified event. Do not invent
+that timestamp. V2 is the selected raw chart detector (Cephxs-referenced,
+independently developed pivot/stretch engine), whereas the original Bandz Po3
+sequence adapter and close-back-through rule manage the attached CISD.
 
-1. **The original Po3 C2 detector**, `poEvalSide()`, allows a still-forming HTF C2 after an open-inside-C1 plus sweep, even before it has closed back inside C1. In the initial bar its phase may still be 2.
-2. **The original event record**, `poSyncRecs()`, can clear a previously linked CISD if the growing C2 later extends its sweep extreme. The drawing state therefore cannot directly serve as a durable alert proof.
-3. **Legacy chart CISD** and **V2 chart CISD** feed `poLinkCisd()` slot 0; V2 only on a chart bar close. The level may be drawn at an opposing-run origin candle that predates the actual confirmation. This **must not** be interpreted as an earlier event time.
-4. P1 snapshots the selected raw CISD's exact `time_close` on its **confirmation bar** and uses the existing record identity (C2 start time and direction) for matching.
-5. A new **C2 confirmed** state is observed only if the **chart bar itself has closed**, its close timestamp equals the **source HTF candle close**, and the *live current* C2 closes strictly inside C1 (`sq.closedIn`). No future bar is used to certify that close.
-6. A later **C2+CISD qualified** state requires the same original C2 record to still be active, the existing chart-slot CISD link to point at a matching raw closed-bar signal, and `poRecVisible(rc)` to allow the record under the original sequence-direction, PSP and xC2 visibility controls, **with no prior close-back-through reclamation recorded**. The qualification time is the **first chart close at which all these are true**, not the C2 start time or CISD origin time.
-7. If a prior linked level is lost before C2 qualification, the provisional P1 link is cleared. A qualified event can subsequently be marked ended if the original CISD is reclaimed/its link ends. An HTF close skipped by a session gap is marked **UNVERIFIED**, not silently backfilled.
+P1A erased provisional-link fields on clearing and hid earlier evidence behind
+a single status. P1B keeps a separate bounded transition history.
 
-### Intentional distinctions
+## Event contract
 
-| Audit value | Meaning | Not equivalent to |
-|---|---|---|
-| `C2 start UTC` | Historical open timestamp of the relevant HTF candle | First time the sweep became visible |
-| `First seen UTC` | First closed chart bar at which P1 actually observed this C2 sweep | The HTF candle open or a reconstructed earlier signal |
-| `LIVE` | Candidate C2 swept C1 within the still-forming source candle | Confirmed Po3 setup |
-| `CLOSED PASS` | That HTF C2 closed strictly back inside C1 | Full model entry or qualified T-Spot |
-| `REJECT` | C2 swept C1 but finished outside the required C1 bounds | CISD detector failure |
-| `PROVISIONAL` | Raw CISD was confirmed and linked while C2 was still live | Qualified C2+CISD event |
-| `QUALIFIED HH:mm` | C2 is HTF-confirmed and its selected raw CISD is linked with original visibility gates satisfied | An instruction to open a trade |
-| `ENDED HH:mm` | Reclamation / link loss after qualification, or later original sequence termination | Loss or stop-out |
-| `UNVERIFIED` | HTF closing transition was not observed at a chart close (e.g. gap) | Positive or negative C2 result |
+All event observations are recorded only at a confirmed chart close. For
+structural C2 closure the chart close must coincide with the source HTF close.
+C2 identity is source candle start + side within this chart configuration.
+Link matching requires side, confirmation bar, origin bar and exact level.
+Timestamps shown are UTC. An origin candle is never a confirmation timestamp.
 
-The original 4H/1H or 6H/90m profile selection matters. The audit's C2 time is based on **the actual selected source timeframe**, not an assumed fixed 4H.
+| Event | Meaning |
+|---|---|
+| CISD_CONFIRMED | selected raw detector confirmed; independent of C2 |
+| C2_CANDIDATE | current source candle swept C1; no HTF confirmation |
+| C2_CISD_LINKED_EARLY | original sequence linked a raw confirmation while C2 still forming |
+| C2_CISD_LINKED_AT_CLOSE | first observed link on source closing chart bar |
+| C2_CISD_LINKED_AFTER_CLOSE | first observed link later |
+| C2_CONFIRMED / C2_REJECTED | observed final HTF close passes/fails strict inside-C1 condition |
+| C2_CISD_QUALIFIED | structural pass, matched original live chart link, no reclaim and original visibility gates pass |
+| C2_CISD_RECLAIMED | original Bandz close-back-through flag first observed, even before qualification |
+| C2_CISD_LINK_ENDED | prior link cleared/replaced, original sequence inactive, C2 rejected or tracking lost |
+| C2_SEQUENCE_ENDED | observed original sequence termination or C2 reject/unverified |
+| C2_UNVERIFIED | source close was not observed |
+| C2_SEQUENCE_UNTRACKED | original bounded record no longer present; not proof of price invalidation |
 
-### November 23 Replay finding
+An early link is informational, not a qualified setup. A structural pass
+survives later sequence termination in the audit. A reclaim does not erase a
+prior qualification. Replacements retain old event snapshots while the summary
+shows the latest link; a new link can qualify only while the original sequence
+has not ended. No retroactive promotion of a reclaimed/ended link.
 
-User screenshots captured a bearish 4H C2 starting **2026-11-23 06:00 UTC**, first observed **06:15**, with a **09:15 UTC** chart CISD confirmation. C2 changed from LIVE to **CLOSED PASS at 10:00 UTC** but the initial P1 table still read PROVISIONAL. This is **not enough to conclude** that the qualification engine is broken: it also requires `rc.alive`, the original raw-CISD link, no reclaim, and `poRecVisible(rc)`. The initial UI collapsed all non-qualified scenarios into PROVISIONAL.
+Reclamation is from original PoRec.cisdBrokeT (which stores candle OPEN time);
+the audit stores the chart CLOSE at which the flag is first observed. A
+CLOSE_BACK_THROUGH reason means the flag's candle-open time matches the current
+chart bar; ORIGINAL_RECLAIM_ALREADY_SET means an earlier flag was first
+observed now and the exact original close is not asserted. V2's separate raw
+pivot invalidation rule is not changed or added as a new qualification filter.
 
-The audit-only build now prints `BLOCKED: <reason>` for CLOSED PASS but unqualified C2, including `PO3_VISIBILITY_GATE`, `RAW_SIGNAL_MISMATCH`, `CISD_RECLAIMED`, `NO_ORIGINAL_LINK`, or `ELIGIBLE_NOT_PROMOTED`. It also distinguishes `ENDED / UNQUALIFIED` from genuinely provisional signals. This changes only how the audit reports status; it does not change Po3 or CISD output. Ask for just one further screenshot of the `11-23 06:00 BEAR` row with the new diagnostic; do not repeat the entire sweep test.
+## Install and one bounded Replay test
 
-## Short TradingView Replay acceptance plan
+1. Update the existing **P1 audit script only** with Raw contents of
+   `indicators/Bandz_Po3_P1_C2_State_Audit.pine` in PR #23.
+2. Preserve the separate clean V2 indicator/layout. Use FOREXCOM:GBPUSD, 15m,
+   profile on 4H, Chart CISD engine V2, Sequence CISD from Chart, UTC timezone.
+   Keep previously tested detector and Po3 settings unchanged.
+3. Enable **P1 → Show Po3/C2 lifecycle audit**. Default **Audit view = C2 summary**.
+4. Replay Nov 23 from before 06:00 UTC (load prior 4H context) through the
+   10:00 UTC C2 close and stop at the same 10:15 Replay endpoint previously
+   captured. Send ONE readable screenshot of the summary.
+5. At the same endpoint switch **Audit view = Event history**, without changing
+   detector or profile settings. Send ONE screenshot of the latest transitions.
+   If the relevant event is displaced, replay to shortly after 09:15 or 10:00.
+   No search for a new positive case is required for this comparison.
 
-1. **Preserve** your existing layout and `Bandz Po3 V2 Visual Test` indicator and template. Do not overwrite them.
-2. Open the new P1 audit Pine file in GitHub, copy Raw contents to a **new** TradingView Pine indicator, name it `Bandz Po3 — P1 C2 Audit`, and add it to a temporary chart layout.
-3. Start with `FOREXCOM:GBPUSD`, **15m**, `Chart CISD engine=V2`, `Sequence CISD from=Chart`. Use your normal HTF ladder, but record the **actual 'Profile on'** source timeframe shown in Bandz's header. A fixed `4H / 1H` ladder with source HTF 2 is convenient for observing 4H C2 closes.
-4. Turn ON `P1 · Po3/C2 lifecycle audit → Show Po3/C2 lifecycle audit`. Leave `Recent C2 records=6`. Set chart timezone to UTC for easy alignment with the panel. The panel itself always labels UTC.
-5. Replay from just **before a C1 sweep starts**, with **at least one closed source HTF candle of prior context**. Advance in 15m increments, checking the last chart close before the source HTF candle closes. **LIVE** (or **PROVISIONAL**) is *not* qualified.
-6. Advance through the **source HTF candle's closing 15m bar**. It must show **CLOSED PASS** or **REJECT** based on the final C2 close back into C1. If no final close can be observed, it must remain **UNVERIFIED**.
-7. Check the **CISD close UTC** separately from C2 start and close. **QUALIFIED** should only appear at or after both underlying confirmations, and only when the original Bandz sequence remains eligible.
-8. Optionally repeat with `Chart CISD engine=Legacy` using the **same** source timeframe and Replay window. Do not compare levels as if every Legacy and V2 raw event had to match.
+Check the original observed 09:15 CISD and 10:00 C2 close; if the early link is
+observed, its timestamp must be retained regardless of reclaim. Reclaim must be
+logged separately at the observed chart close. Qualified must not be emitted
+if reclamation precedes qualification. If a positive event appears naturally,
+verify the qualification timestamp; otherwise it remains an acceptance gap.
 
-### Bounded evidence request
+## Bounds and remaining limitations
 
-One **valid C2 with selected-engine CISD**, one **candidate that fails or remains unqualified**, and, if visible, one **provisional link cleared by a later C2 extreme** are enough to decide whether this P1 event design is sound. Share just the chart + P1 table at the decisive close(s); **do not** send another week of screenshots.
-
-For known raw V2 examples from earlier work, `2026-11-17 07:45 UTC` bearish and `2026-11-18 07:30 UTC` bearish are useful checks of raw CISD timestamps, **not prevalidated C2-qualified examples**.
-
-## Engineering checks and limitations
-
-- CI checks that the **entire original computational source** is byte-identical (except the indicator title) before the appended P1 audit.
-- CI checks that the new block cannot mutate existing `PoRec`, `PoSeq`, `poCisds`, or `v2rEvents`, and has no alert calls.
-- Seven **synthetic reference scenarios** test the intended event-state contract. These do **not** run Pine code and cannot replace the native TradingView compile / Replay test.
-- Initial P1 panel does **not** constitute a production alert implementation. Real-time / TradingView Replay event order and session gaps must be verified before a qualified alert can use these snapshots.
-- **No strategy edge or profitability has been established.** This audit concerns event-time integrity, not forecasting outcomes.
-
-## Exit criteria for P1
-
-1. Native Pine compile succeeds.
-2. C2 **cannot** become qualified solely from a live-candle sweep.
-3. The same 4H or 90m C2 cannot confirm twice, and a rejected C2 cannot become qualified retrospectively.
-4. Raw CISD confirmation time matches the actual chart candle CLOSE, not the start of its drawn reference line.
-5. When C2 makes a new extreme and the original engine clears a link, the provisional record does not persist into qualification.
-6. Cross-source chart / HTF time alignment is correct in Replay, including a session boundary example or an explicit UNVERIFIED result.
-
-Only after these pass do we move into P2 alert events.
+- 40 C2 summary records, 256 matched raw signals, 192 immutable transition rows.
+  Event history displays latest 12; summary displays 3–7. Not durable storage
+  across script recalculation or reload. Event history is regenerated on input
+  changes/replay. This is not an alert/webhook payload implementation.
+- Original record cache is bounded; evictions are explicitly distinguished
+  from invalidation. Summary displays the latest link, not every former link.
+- Chart sequence slot only for qualification. Lower-timeframe 3m/5m slots
+  remain original Legacy where actually selected on a smaller chart.
+- The original visibility gate remains an intentional conservative condition
+  for qualified events; it is not proof of T-Spot entry eligibility or edge.
+- Native Pine compile and Replay of revision B remain required.
+- CI includes static source/invariant checks and 11 synthetic lifecycle
+  fixtures; these do not execute Pine.
+- P2 raw/early notification prototype may be developed separately after
+  native verification, but qualified alerts remain gated on a positive
+  qualification case, correct invalidation behavior and realtime delivery checks.
