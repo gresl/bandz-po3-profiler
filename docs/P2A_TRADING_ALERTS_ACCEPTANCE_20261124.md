@@ -148,3 +148,7 @@ User reports switching to Live and creating a TradingView alert on Nov 24.
 No actual server-delivered message received for validation yet. No production
 webhook activation established. P2A source unchanged; live delivery remains
 the acceptance gate before declaring P2A complete.
+
+## Live transport acceptance — 24 November 2026
+
+User CSV TradingView_Alerts_Log_2026-11-24_93169.csv contains 670 rows, one P2A payload. Alert delivery at 16:00:00 UTC matches bar_close_ms and observed_ms 1795536000000. FOREXCOM:GBPUSD / 15 / 240 / V2, BULL CISD_CONFIRMED, level 1.31126, close 1.31162, origin 1795534200000. One event, no invalid or omitted identities; C2 and link null as expected. Webhook status empty. P2A first live raw transport smoke test passed; live early/reclaim/reject and restart behavior remain unverified. Proceed to isolated P2B prototype; no production webhook or trade execution.
