@@ -96,3 +96,38 @@ verify the qualification timestamp; otherwise it remains an acceptance gap.
 - P2 raw/early notification prototype may be developed separately after
   native verification, but qualified alerts remain gated on a positive
   qualification case, correct invalidation behavior and realtime delivery checks.
+
+
+## Native Replay evidence — 24 November 2026
+
+User screenshots created 14:23 UTC show GBPUSD 15m / 4H, V2 (per user
+and audit labels; exact feed/settings not embedded in screenshots). Both P1B
+views render successfully.
+
+| UTC on Nov 23 | Side | Source C2 start | Event | Level / reason |
+|---|---|---|---|---|
+| 03:45 | BEAR | 02:00 | CISD_CONFIRMED and C2_CISD_LINKED_EARLY | 1.31082 |
+| 05:15 | BEAR | 02:00 | C2_CISD_RECLAIMED | CLOSE_BACK_THROUGH |
+| 05:45 | BEAR | 02:00 | C2_CISD_LINK_ENDED | C2_NEW_EXTREME_OR_LINK_CLEARED |
+| 06:00 | BEAR | 02:00 | C2_REJECTED and C2_SEQUENCE_ENDED | C2_CLOSED_OUTSIDE_C1 |
+| 06:15 | BEAR | 06:00 | C2_CANDIDATE | SWEEP_OBSERVED |
+| 08:30 | BULL | — | CISD_CONFIRMED | 1.31265 |
+| 09:45 | BEAR | 06:00 | CISD_CONFIRMED and C2_CISD_LINKED_EARLY | 1.31231 |
+| 10:00 | BEAR | 06:00 | C2_CONFIRMED and C2_CISD_QUALIFIED | C2_CLOSED_INSIDE_C1; V2 |
+
+Positive qualification, negative rejection, separate reclaim and link-end
+events, preservation of earlier links, and consistent summary/history views
+are observed. The earlier P1A run recorded a 09:15 linked CISD with
+CISD_RECLAIMED for the 06:00 C2; this P1B run records a different 09:45
+confirmation and qualification at 10:00. These are NOT exact regression
+parity. Chart overlay differences also suggest configuration differences.
+Cause remains unverified; do not assume either a detector change or a
+fixed defect. Exact feed, detector/profile inputs, Replay initialization,
+and raw signal sequence would be required to reconcile. Do not reopen CISD
+threshold tuning based on this difference alone.
+
+Decision: P1B has sufficient observed event-contract evidence to start an
+isolated P2A raw/early alert prototype. Exact parity and realtime delivery,
+deduplication and reload/replay behavior remain open. Qualified-alert
+production enablement remains gated. No original indicator changes or
+alert activation in this documentation commit.
