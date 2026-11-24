@@ -32,3 +32,20 @@ https://www.tradingview.com/support/solutions/43000529348-how-to-configure-webho
 https://nginx.org/en/docs/http/ngx_http_access_module.html
 https://nginx.org/en/docs/http/ngx_http_limit_req_module.html
 https://nginx.org/en/docs/http/ngx_http_proxy_module.html
+
+## VPS HTTPS acceptance — 24 November 2026
+
+Pinned nginx configuration commit c76c8e7ab7ba33b3172d976609a8fdd9b7d7ee1e
+installed. Existing safe log showed 109 successful POSTs from published
+TradingView sender IPs. Public DNS lookup returned an address; no change
+made to existing DNS or routes. nginx -t/reload passed; nginx, Bandz,
+existing receiver and worker all active. Local HTTPS synthetic source 3:
+HTTP 200 two inserts (12 ms), HTTP 200 two duplicates (10 ms), HTTP 409
+conflict (8 ms), HTTP 404 unknown token (6 ms). Counts 2|3|4|1; source
+subsequently disabled. TLS verification enabled. Safe log showed method,
+status, timing, upstream status, no URI or token. Real GBPUSD 15/240 V2
+source 4 registered and user reports URL configured in P2B alert. Initial
+query zero deliveries/events; no Bandz external delivery confirmed yet.
+No need to generate artificial live market signals. Keep P2B running.
+P3C local deployment accepted, external provider delivery pending.
+Backup and retention verification and passive monitoring remain open.
