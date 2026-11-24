@@ -87,3 +87,35 @@ Vendor references:
 - https://www.tradingview.com/pine-script-docs/faq/alerts/
 - https://www.tradingview.com/support/solutions/43000773947-alert-name-and-message-size-limits/
 - https://www.tradingview.com/support/solutions/43000690939-alert-was-triggered-too-often-and-stopped/
+
+
+## Native Preview acceptance — 24 November 2026
+
+User supplied TradingView screenshots and pine-logs-Bandz P2A_0c2a5.csv.
+Native compilation successful. FOREXCOM:GBPUSD / 15 / 240 / V2; audit
+panel OFF; default alert selection; Preview mode. All five exported
+messages parsed as valid JSON. Independently verified counts, unique IDs,
+reconstructed C2/signal/link/event identities, UTC close timestamps and
+null fields for structural rejection. Zero omitted and invalid identities.
+
+| Log open UTC Nov 23 | Payload close UTC | Kind | C2 start UTC | CISD origin UTC | Level |
+|---|---|---|---|---|---|
+| 03:30 | 03:45 | C2_CISD_LINKED_EARLY | 02:00 | 03:00 | 1.31082 |
+| 05:00 | 05:15 | C2_CISD_RECLAIMED | 02:00 | 03:00 | 1.31082 |
+| 05:30 | 05:45 | C2_CISD_LINK_ENDED | 02:00 | 03:00 | 1.31082 |
+| 05:45 | 06:00 | C2_REJECTED | 02:00 | null | null |
+| 09:30 | 09:45 | C2_CISD_LINKED_EARLY | 06:00 | 08:00 | 1.31231 |
+
+First three events share signal and link IDs; first four share C2 ID.
+Reclaim reason CLOSE_BACK_THROUGH; link end C2_NEW_EXTREME_OR_LINK_CLEARED;
+reject C2_CLOSED_OUTSIDE_C1. Raw and qualification events absent as expected.
+Matches P1B event times, not proof of P1A parity. Each batch contains one
+event; simultaneous native raw+early batching remains untested.
+
+Next: one optional-but-useful native Preview run with Raw ON (same endpoint)
+to prove batching; then Live mode, raw ON temporarily to speed up transport
+smoke test, no webhook, no trade action, one GBPUSD alert via Any alert()
+function call. Validate actual server alert message and close timestamp.
+Return raw OFF and recreate alert after test. Follow-up notification
+history is local to alert instance, so no historical followups expected.
+Qualified dispatch and production receiver remain disabled/unmodified.
