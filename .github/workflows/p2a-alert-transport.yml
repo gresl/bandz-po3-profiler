@@ -1,0 +1,22 @@
+name: P2A alert transport safety
+on:
+  push:
+    branches:
+      - feature/p2a-trading-alerts-20261124
+  pull_request:
+    paths:
+      - 'indicators/Bandz_Po3_P2A_Alerts.pine'
+      - 'research/tests/test_p2a_alert_transport.py'
+      - '.github/workflows/p2a-alert-transport.yml'
+permissions:
+  contents: read
+jobs:
+  p2a-static-and-fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: P1 baseline and P2A transport checks
+        run: |
+          python3 -m unittest discover -s research/tests -p 'test_p1_c2_state_audit.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_p2a_alert_transport.py' -v
