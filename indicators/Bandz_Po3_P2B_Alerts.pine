@@ -3610,7 +3610,8 @@ bool p2Supported = chart.is_standard and timeframe.isminutes and timeframe.multi
 bool p2Raw = input.bool(false, "Raw CISD confirmations", group=P2_G)
 bool p2Early = input.bool(true, "Early C2 + CISD links", group=P2_G)
 bool p2C2 = input.bool(false, "Structural C2 confirmed", group=P2_G)
-bool p2Qualified = input.bool(false, "Qualified C2 + CISD (Preview only)", group=P2_G, tooltip="Experimental P2B: only emitted in Preview until native acceptance. Not an entry signal.")
+bool p2Qualified = input.bool(false, "Qualified C2 + CISD", group=P2_G, tooltip="Opt-in lifecycle notification; not a trade entry signal.")
+bool p2QualifiedLive = input.bool(false, "Allow qualified notifications in Live", group=P2_G, tooltip="Experimental live smoke test. Requires Live mode and Qualified C2 + CISD enabled.")
 bool p2Reclaim = input.bool(true, "Reclaimed notified link", group=P2_G)
 bool p2Reject = input.bool(true, "Rejected notified C2", group=P2_G)
 bool p2LinkEnd = input.bool(true, "Ended notified link", group=P2_G)
@@ -3950,7 +3951,7 @@ if p1On and barstate.islast and not na(p1Table)
 
 // =============================================================================
 // P2A — CLOSED-BAR NOTIFICATION TRANSPORT
-// Independent of audit-panel visibility. Qualified events are Preview-only.
+// Independent of audit-panel visibility. Qualified Live is separately opt-in.
 // =============================================================================
 p2Quote(string v) =>
     "\"" + str.replace_all(str.replace_all(str.replace_all(str.replace_all(str.replace_all(v, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n"), "\r", "\\r"), "\t", "\\t") + "\""
@@ -4010,7 +4011,7 @@ bool p2Dispatch = p2On and p2Supported and barstate.isconfirmed and not na(time_
      ((p2Mode == "Preview" and time_close >= p2From and time_close < p2To) or
      (p2Mode == "Live" and barstate.isrealtime))
 if p2On and not p2Supported and barstate.islastconfirmedhistory
-    log.warning("P2A disabled: requires standard 15m candles, 4H profile, Chart CISD slot.")
+    log.warning("P2B disabled: requires standard 15m candles, 4H profile, Chart CISD slot.")
 if p2Dispatch and p2Queue.size() > 0
     string body = ""
     int count = 0
@@ -4030,13 +4031,13 @@ if p2Dispatch and p2Queue.size() > 0
         bool direction = p2Side == "Both" or (p2Side == "Bullish" and ev.side == 1) or (p2Side == "Bearish" and ev.side == -1)
         bool selected = direction and (
              (raw and p2Raw) or (early and p2Early) or
-             (qualified and p2Qualified and p2Mode == "Preview") or
+             (qualified and p2Qualified and (p2Mode == "Preview" or (p2Mode == "Live" and p2QualifiedLive))) or
              (ev.kind == "C2_CONFIRMED" and p2C2) or
              (ev.kind == "C2_CISD_RECLAIMED" and p2Reclaim and p2NotifiedLinks.includes(link)) or
              (ev.kind == "C2_CISD_LINK_ENDED" and p2LinkEnd and p2NotifiedLinks.includes(link)) or
              (ev.kind == "C2_REJECTED" and p2Reject and p2NotifiedC2.includes(c2)) or
              ((ev.kind == "C2_SEQUENCE_ENDED" or ev.kind == "C2_SEQUENCE_UNTRACKED") and p2SeqEnd and p2NotifiedC2.includes(c2)))
-        // Qualification is opt-in and Preview-only in P2B initial acceptance.
+        // Qualification is opt-in; Live requires an additional explicit switch.
         if selected
             if not valid
                 invalid += 1
