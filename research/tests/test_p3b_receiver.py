@@ -9,12 +9,16 @@ import sys
 import unittest
 from unittest.mock import patch
 
-import psycopg
+try:
+    import psycopg
+except ImportError:
+    psycopg = None
 
 P3 = Path(__file__).resolve().parents[1] / "p3"
 sys.path.insert(0, str(P3))
-from storage import ingest
-from receiver import make_app
+if psycopg is not None:
+    from storage import ingest
+    from receiver import make_app
 
 DSN = os.environ.get("BANDZ_TEST_DSN")
 ADMIN = os.environ.get("BANDZ_TEST_ADMIN_DSN")
@@ -28,7 +32,7 @@ def wire(b):
     return json.dumps(b).encode()
 
 
-@unittest.skipUnless(DSN and ADMIN, "disposable PostgreSQL CI only")
+@unittest.skipUnless(psycopg is not None and DSN and ADMIN, "disposable PostgreSQL CI only")
 class TestStorage(unittest.TestCase):
     def setUp(self):
         with psycopg.connect(ADMIN) as c:
@@ -133,6 +137,7 @@ def request(path, body, headers=None, method="POST"):
     return asyncio.run(run())
 
 
+@unittest.skipUnless(psycopg is not None, "requires psycopg; dedicated P3B CI installs it")
 class TestHTTP(unittest.TestCase):
     def test_boundary_checks(self):
         path = "/bandz-hook/" + TOKEN
