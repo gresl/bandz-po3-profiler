@@ -1,0 +1,29 @@
+[Unit]
+Description=Bandz isolated Po3 webhook receiver (staging)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=bandzingest
+Group=bandzingest
+WorkingDirectory=/opt/bandz-ingest
+Environment="BANDZ_DSN=dbname=po3journal user=bandzingest host=/var/run/postgresql"
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m uvicorn receiver:create_app --factory --host 127.0.0.1 --port 8081 --lifespan off --no-access-log --no-proxy-headers --limit-concurrency 16 --timeout-keep-alive 2
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target
