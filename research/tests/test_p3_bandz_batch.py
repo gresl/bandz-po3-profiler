@@ -39,6 +39,12 @@ def wire(b):
 
 
 class TestBandzBatch(unittest.TestCase):
+    def test_native_preview_fixture(self):
+        fixture = Path(__file__).resolve().parents[1] / "p3" / "fixtures" / "nov23_native_preview.jsonl"
+        batches = [decode(line, SRC) for line in fixture.read_bytes().splitlines()]
+        self.assertEqual([b["event_count"] for b in batches], [1, 2])
+        self.assertEqual(batches[0]["events"][0]["kind"], "C2_CISD_QUALIFIED")
+
     def test_raw_and_link_same_bar(self):
         b = decode(wire(batch(event("CISD_CONFIRMED", CONFIRM, raw=True),
                               event("C2_CISD_LINKED_EARLY", CONFIRM))), SRC)
