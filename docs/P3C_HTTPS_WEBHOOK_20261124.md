@@ -49,3 +49,6 @@ query zero deliveries/events; no Bandz external delivery confirmed yet.
 No need to generate artificial live market signals. Keep P2B running.
 P3C local deployment accepted, external provider delivery pending.
 Backup and retention verification and passive monitoring remain open.
+
+## First external delivery evidence — 25 November 2026
+Seven TradingView POSTs from allowlisted addresses 52.89.214.238 and 54.218.53.128 between 24 Nov 20:45:06 UTC and 25 Nov 06:15:03 UTC all returned HTTP 200/upstream 200. Nginx request times 201–459 ms, upstream 5–7 ms. External transport smoke passed. Database event contents, diagnostic counters, qualification and market quality remain to be inspected; seven deliveries are not seven trades. No claim of full lifecycle or strategy acceptance.
